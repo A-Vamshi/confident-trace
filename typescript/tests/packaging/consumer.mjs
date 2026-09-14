@@ -21,16 +21,16 @@ assert.deepEqual(
 );
 assert.equal(esm.init, cjs.init);
 assert.deepEqual(Object.keys(esm).sort(), [
-  'createSpanProcessor',
   'flush',
   'init',
+  'projectContext',
   'shutdown',
   'span',
+  'traceContext',
   'turn',
   'updateLlmSpan',
   'updateSpan',
   'updateTrace',
-  'withProject',
   'withSpan',
   'withTracingSuppressed',
 ]);

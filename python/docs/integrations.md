@@ -162,9 +162,9 @@ See [the runnable agent/tool/streaming example](../examples/google_adk/agent.py)
 
 ## Native AgentCore application telemetry
 
-For an existing AgentCore application, install `pip install 'confident-trace[agentcore]'`.
-This extra adds only `opentelemetry-instrumentation-asgi`; install `bedrock-agentcore`
-separately when starting a new application. Tested with AgentCore **1.22.0** and OTel
+For an existing AgentCore application, install `pip install confident-trace`;
+OTel ASGI instrumentation is included. Install `bedrock-agentcore` separately
+when starting a new application. Tested with AgentCore **1.22.0** and OTel
 ASGI instrumentation **0.63b1**. `init()` includes `agentcore` by default. The adapter
 uses upstream OTel ASGI middleware for HTTP `/invocations` requests without an
 active server span. This fixes a verified local-runtime gap: AgentCore's request
@@ -209,7 +209,7 @@ its normal receive/send spans. Constructor failure falls back before invoking th
 application; application failures are never retried.
 
 For reproducible tests use `pip install -c python/tests/constraints/native.txt -e
-'./python[test,native-test]'` from the repository root. CI separately installs the
+./python -r python/requirements/test.txt -r python/requirements/native.txt` from the repository root. CI separately installs the
 latest compatible dependencies without those constraints.
 `shutdown()` removes owned hooks and stops only Confident's exporter; framework and
 application exporters continue operating. `OTEL_SDK_DISABLED=true` prevents this
@@ -351,7 +351,7 @@ and [Strands tracing](https://strandsagents.com/docs/user-guide/observability-ev
 
 In an application already using `openai-agents`, install
 `pip install 'confident-trace[openai-agents]'` and call `init()` before agent runs.
-The extra installs the **OpenInference OTel bridge**, not the agent framework.
+The additional package supplies the **OpenInference OTel bridge**; install the agent framework separately.
 Unlike Pydantic AI, OpenAI Agents' built-in tracing objects are not OTel spans;
 the bridge converts them into OTel spans on the provider receiving our exporter.
 See the [runnable example](../examples/openai_agent.py).
@@ -368,7 +368,7 @@ needed. Backend interpretation of OpenInference remains separate work.
 
 Our provider wrappers recognize only the bridge's verified scope and `LLM` kind
 on the same provider. Independent calls and calls inside tools remain instrumented.
-Without the extra, ordinary supported model-client calls can still be traced,
+Without the bridge package, ordinary supported model-client calls can still be traced,
 but framework spans are not automatically produced by Confident. Native
 `RunConfig(tracing_disabled=True)` remains effective for framework spans and does
 not disable separately selected Confident model-client instrumentation.

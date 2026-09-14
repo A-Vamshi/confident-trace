@@ -79,6 +79,7 @@ REQUIRED = {
 MINIMUM = [
     "opentelemetry-api==1.39.0",
     "opentelemetry-sdk==1.39.0",
+    "opentelemetry-instrumentation-asgi==0.60b0",
     "opentelemetry-exporter-otlp-proto-http==1.39.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.39.0",
     "openai==1.109.0",

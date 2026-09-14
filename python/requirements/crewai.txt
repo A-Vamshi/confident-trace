@@ -1,0 +1,2 @@
+# Development and CI only; not published as package dependencies.
+crewai>=1,<2

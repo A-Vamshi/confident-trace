@@ -20,8 +20,13 @@ const run = (command, args, cwd = temporary) =>
     cwd,
     stdio: 'pipe',
     env: {
-      ...process.env,
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(
+          ([key]) => !key.startsWith('OTEL_') && !key.startsWith('CONFIDENT_'),
+        ),
+      ),
       npm_config_update_notifier: 'false',
+      OTEL_SDK_DISABLED: 'false',
       ...(command === 'npm'
         ? { npm_config_cache: join(temporary, 'npm-cache') }
         : {}),
@@ -48,6 +53,10 @@ try {
   const metadata = JSON.parse(
     await readFile(join(root, 'package.json'), 'utf8'),
   );
+  for (const [name, peer] of Object.entries(metadata.peerDependenciesMeta)) {
+    if (peer.optional)
+      assert(!metadata.dependencies[name], `${name} must remain opt-in`);
+  }
   const dependencies = { 'confident-trace': `file:${archive}` };
   for (const name of [
     ...Object.keys(metadata.dependencies),
@@ -69,6 +78,38 @@ try {
     '--ignore-scripts',
     '--config.confirmModulesPurge=false',
   ]);
+  const productionPackages = JSON.parse(
+    run('pnpm', ['list', '--prod', '--depth', 'Infinity', '--json']).toString(),
+  );
+  const installedNames = new Set();
+  function collectDependencies(packages) {
+    for (const [name, info] of Object.entries(packages ?? {})) {
+      installedNames.add(name);
+      collectDependencies(info.dependencies);
+      collectDependencies(info.optionalDependencies);
+    }
+  }
+  collectDependencies(productionPackages[0].dependencies);
+  assert(
+    installedNames.has('@ai-sdk/otel'),
+    'Vercel tracing bridge must be included',
+  );
+  assert(installedNames.has('ai'), 'The Vercel bridge requires AI SDK');
+  for (const [name, peer] of Object.entries(metadata.peerDependenciesMeta)) {
+    if (peer.optional && name !== 'ai')
+      assert(!installedNames.has(name), `${name} leaked into the base install`);
+  }
+  await cp(
+    join(root, 'tests/packaging/base-init.mjs'),
+    join(temporary, 'base-init.mjs'),
+  );
+  for (const args of [
+    ['base-init.mjs'],
+    ['base-init.mjs', 'grpc'],
+    ['--import', 'confident-trace/register', 'base-init.mjs'],
+  ]) {
+    process.stdout.write(run(process.execPath, args));
+  }
   const installed = join(temporary, 'node_modules/confident-trace');
   assert.equal(
     await readFile(join(installed, 'LICENSE'), 'utf8'),
@@ -136,7 +177,9 @@ try {
     '@langchain/langgraph',
     '@openai/agents',
     '@mastra/core',
+    '@mastra/observability',
     'ai',
+    '@ai-sdk/otel',
     'esbuild',
     'tsx',
     'protobufjs',
@@ -157,6 +200,11 @@ try {
     '--ignore-scripts',
     '--config.confirmModulesPurge=false',
   ]);
+  await cp(
+    join(root, 'tests/packaging/missing-bridges.mjs'),
+    join(temporary, 'missing-bridges.mjs'),
+  );
+  process.stdout.write(run(process.execPath, ['missing-bridges.mjs']));
   for (const directory of [
     'tests/auto',
     'tests/support/proto',

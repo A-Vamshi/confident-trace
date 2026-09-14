@@ -82,8 +82,8 @@ After confirming the current docs, Python integrations are auto-detected after
 - Gateways: LiteLLM, OpenRouter, and Portkey natively; Bifrost and TrueFoundry
   through OpenAI or Anthropic clients with explicitly configured proxy URLs.
 
-OpenAI Agents requires `pip install "confident-trace[openai-agents]"`.
-AgentCore requires `pip install "confident-trace[agentcore]"`.
+OpenAI Agents requires `pip install 'confident-trace[openai-agents]'`.
+AgentCore requires `pip install confident-trace`.
 
 For custom gateway URLs, pass the matching `*_proxy_urls` option to `init()`.
 

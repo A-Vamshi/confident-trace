@@ -66,13 +66,26 @@ def python_case(suite, runtime, profile, deps, work, report, env, log):
     pip = [python, "-m", "pip"]
     install = pip + ["install"]
     if profile == "base":
-        run(install + ["-e", "./python[test]", "build", "ruff"], repo, env, log)
+        run(
+            install
+            + ["-e", "./python", "-r", "python/requirements/test.txt", "build", "ruff"],
+            repo,
+            env,
+            log,
+        )
         if deps == "minimum":
             run(install + MINIMUM, repo, env, log)
     elif profile == "mega":
         run(
             install
-            + ["-e", "./python[test]", "-r", "python/examples/mega/requirements.txt"],
+            + [
+                "-e",
+                "./python",
+                "-r",
+                "python/requirements/test.txt",
+                "-r",
+                "python/examples/mega/requirements.txt",
+            ],
             repo,
             env,
             log,
@@ -84,7 +97,19 @@ def python_case(suite, runtime, profile, deps, work, report, env, log):
             else ["--upgrade"]
         )
         run(
-            install + options + ["-e", f"./python[test,{profile}-test]"], repo, env, log
+            install
+            + options
+            + [
+                "-e",
+                "./python",
+                "-r",
+                "python/requirements/test.txt",
+                "-r",
+                f"python/requirements/{profile}.txt",
+            ],
+            repo,
+            env,
+            log,
         )
     # Record the actual resolution, including latest's moving transitive deps.
     (report / "dependencies.txt").write_text(
@@ -103,6 +128,7 @@ def python_case(suite, runtime, profile, deps, work, report, env, log):
         if (repo / "LICENSE").read_bytes() != (repo / "python/LICENSE").read_bytes():
             raise RuntimeError("Python LICENSE differs from root LICENSE")
         run([python, "-m", "build", "python"], repo, env, log)
+        run([python, "scripts/check-python-install.py"], repo, env, log)
         return
     required = list(REQUIRED.get(suite, []))
     if suite == "langchain" and runtime != "3.10":

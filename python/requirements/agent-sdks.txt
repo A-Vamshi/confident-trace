@@ -1,0 +1,4 @@
+# Development and CI only; not published as package dependencies.
+openai-agents
+claude-agent-sdk
+openinference-instrumentation-openai-agents>=2.2.1,<3

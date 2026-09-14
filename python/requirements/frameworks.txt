@@ -1,0 +1,5 @@
+# Development and CI only; not published as package dependencies.
+llama-index-core
+llama-index-llms-openai
+agno
+smolagents[openai]

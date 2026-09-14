@@ -167,7 +167,7 @@ association of separate request traces.
 - **Google ADK:** `python -m pip install google-adk`; set `GOOGLE_API_KEY`,
   `CONFIDENT_API_KEY`, and optionally `GOOGLE_MODEL`. Run
   `python python/examples/google_adk/agent.py` for an agent, tools and streaming.
-- **AgentCore with Bedrock:** `python -m pip install -e './python[agentcore]' bedrock-agentcore boto3`;
+- **AgentCore with Bedrock:** `python -m pip install -e ./python bedrock-agentcore boto3`;
   set `BEDROCK_MODEL`, `CONFIDENT_API_KEY`, and normal AWS credentials/region. Run
   `python python/examples/agentcore/bedrock.py`.
 - **AgentCore with Strands:** additionally install `strands-agents[otel]`; use the

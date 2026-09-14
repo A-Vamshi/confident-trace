@@ -1,5 +1,12 @@
 # Confident Trace for Node.js
 
+Vercel AI SDK tracing includes `@ai-sdk/otel` as a required dependency, which also
+installs `ai`. Other provider/framework SDKs remain optional peers. Install
+`@mastra/observability` to trace Mastra, including automatic setup. A missing
+Mastra bridge disables that integration without making `init()` throw.
+Required OpenTelemetry dependencies remain part of the base installation.
+Test dependencies are development-only.
+
 OpenTelemetry tracing for Node.js 22 and 24. Use the same automatic setup for
 OpenAI, Anthropic, Google GenAI, Vercel AI SDK, LangChain, LangGraph, Mastra, and
 OpenAI Agents. ESM and CommonJS entry points share one runtime.
@@ -441,7 +448,7 @@ JavaScript SDK versions; Python version ranges are independent.
 AI SDK 7 uses the official `@ai-sdk/otel` integration. Supply our tracer to it:
 
 ```sh
-pnpm add ai @ai-sdk/otel
+pnpm add confident-trace ai
 ```
 
 ```ts

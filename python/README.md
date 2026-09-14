@@ -1,5 +1,11 @@
 # Confident Trace
 
+The base install includes only OpenTelemetry and wrapt runtime dependencies.
+ASGI instrumentation is included for AgentCore. Applications supply their own
+provider SDKs; `confident-trace[openai-agents]` adds the optional OpenInference bridge.
+Test dependencies are development-only. Missing optional integrations are skipped
+without preventing `init()` from starting the tracing runtime.
+
 OpenTelemetry-first tracing for AI workloads. No Confident wire format, local
 agent, replacement provider clients, or dependency on DeepEval.
 
@@ -32,7 +38,7 @@ scope starts a fresh trace for each turn. Explicit thread IDs also populate the 
 `gen_ai.conversation.id` on the entry and subsequent package spans. See `examples/conversation.py` for
 adding conversation metadata to an optional custom entry point.
 
-Development install: `pip install -e './python[test]'` from the repository root.
+Development install: `pip install -e ./python -r python/requirements/test.txt` from the repository root.
 Version 0.1.0 is the initial release; the API may change before 1.0.0. See the release compatibility matrix for coverage.
 
 ## What is supported?
@@ -44,7 +50,7 @@ Version 0.1.0 is the initial release; the API may change before 1.0.0. See the r
   CrewAI, LlamaIndex, Agno and smolagents capture execution structure with
   provider-owned inference spans; see [framework ownership](docs/frameworks.md).
 - **Native framework integration:** Pydantic AI, Strands, Google ADK, Microsoft Agent
-  Framework, AgentCore, OpenAI Agents (requires the tracing bridge extra), and
+  Framework, AgentCore, OpenAI Agents (requires the tracing bridge package), and
   Claude Agent SDK (native child-process export). See [setup and native limitations](docs/integrations.md).
 - **Existing OTel spans:** we export spans an SDK/framework or external instrumentor
   already emits through the shared provider. Framework instrumentation must already
@@ -148,14 +154,12 @@ ADK or Microsoft Agent Framework application, then call `init()` on the shared
 global OTel provider. Supported installed SDKs are detected automatically; manage
 your provider and framework dependencies in your application.
 
-AgentCore additionally needs OTel ASGI instrumentation: install
-`pip install 'confident-trace[agentcore]'`. This extra installs the tracing
-middleware only; your application supplies `bedrock-agentcore`. Extras add tracing
-dependencies, rather than enabling integrations.
+AgentCore uses the OTel ASGI instrumentation included in `pip install confident-trace`.
+Your application supplies `bedrock-agentcore`; no AgentCore tracing extra is needed.
 
 See [integration setup and boundaries](docs/integrations.md) and
 [examples](examples/README.md). Tested versions are documented; cloud deployment
-and backend mapping are separate. Test extras are for development and CI.
+and backend mapping are separate. Development and CI dependencies live in `python/requirements/` in the repository.
 
 ## SDK diagnostics
 
@@ -185,7 +189,7 @@ This covers the shared helper, not every upstream or independently caught failur
 
 
 For OpenAI Agents framework tracing, install `confident-trace[openai-agents]` in
-addition to your existing `openai-agents` package. This extra adds the OpenInference
+addition to your existing `openai-agents` package. The additional package supplies the OpenInference
 tracing bridge. Claude Agent SDK needs no extra; `init()` configures its default
 subprocess's native OTLP export. See [setup and boundaries](docs/integrations.md).
 

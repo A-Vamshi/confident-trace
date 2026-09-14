@@ -1,0 +1,6 @@
+# Development and CI only; not published as package dependencies.
+google-adk
+bedrock-agentcore
+opentelemetry-instrumentation-asgi
+strands-agents[otel,openai]
+pydantic-ai-slim[openai]

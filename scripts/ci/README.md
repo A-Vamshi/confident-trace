@@ -47,7 +47,7 @@ The partition preserves all original test/environment pairings:
 - Shared native lifecycle and mixed SDK tests belong to Interoperability, which
   also retains the original Python 3.13 mega environment and offline command.
 
-The original suite has missing-extra skips outside an integration's home
+The original suite has missing-integration skips outside an integration's home
 environment; these remain intentional. Home rows verify required distributions
 before pytest and reject missing-dependency skips or an empty selection. Existing
 xfails and deliberate platform/framework skips remain intact. SDK subprocess

@@ -1,0 +1,5 @@
+# Development and CI only; not published as package dependencies.
+langchain>=1,<2
+langgraph>=1,<2
+langchain-openai>=1,<2
+deepagents>=0.7.13,<0.8; python_version >= '3.11'
