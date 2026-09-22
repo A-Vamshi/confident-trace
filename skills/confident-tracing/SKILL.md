@@ -67,8 +67,10 @@ not apply.
    instrument it with a custom span. Read `references/tracing.md`.
 5. Give each span a meaningful type (`llm`, `retriever`, `tool`, `agent`, or
    `custom`) and capture useful inputs and outputs.
-6. Add trace-level tags, metadata, user ID, thread ID, turn ID, and environment
-   where they help diagnose failure patterns.
+6. Add trace-level tags, metadata, user ID, customer ID, thread ID, turn ID,
+   and environment where they help diagnose failure patterns. Structured
+   `thread`, `user`, and `customer` objects carry extra properties such as
+   names, tags, and metadata.
 7. Never trace secrets, credentials, or unapproved sensitive data. Disable
    package-owned content capture when required.
 8. Finish active work and streams before flushing or shutting down, then verify

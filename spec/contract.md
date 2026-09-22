@@ -55,16 +55,29 @@ of the application. `confident.span.content_truncated` marks accumulator overflo
 | confident.trace.input / output | JSON string |
 | confident.trace.tags | native string array |
 | confident.trace.metadata | JSON object string, or bounded marker |
-| confident.trace.thread_id / turn_id / user_id | string |
+| confident.trace.thread_id / turn_id / user_id / customer_id | string |
+| confident.trace.thread.id / user.id / customer.id | string |
+| confident.trace.thread.tags | native string array |
+| confident.trace.thread.metadata | JSON object string, or bounded marker |
+| confident.trace.user.name / customer.name | string |
 | confident.trace.environment | string |
 | confident.span.input / output | JSON string for custom steps/tools |
 | confident.span.content_truncated | boolean |
 
+Structured thread, user, and customer fields emit individual dotted attributes.
+Their `id` must match the shorthand `*_id`, which the SDK always writes
+alongside the dotted ID. Properties may be supplied in separate updates on the
+same entry span; the receiver materializes an entity once an ID is present.
+Disabled or failing metadata capture omits dotted metadata while safe identity,
+name, and tag fields remain available. Entity IDs must remain stable within a
+trace because OTEL span attributes cannot delete properties written for an
+earlier ID.
+
 Trace-row fields belong to the entry span. `update_trace` targets the active entry,
 falling back to the current OTel span. Explicit thread IDs also populate
 `gen_ai.conversation.id` on Confident-owned spans, inherited by subsequent package
-spans under that entry. On foreign spans, `update_trace(thread_id=...)` writes only
-`confident.trace.thread_id` and preserves native conversation attributes. AgentCore
+spans under that entry. On foreign spans, `update_trace(thread_id=...)` writes the
+Confident shorthand and dotted ID while preserving native conversation attributes. AgentCore
 request middleware likewise enriches its span with the Confident thread extension.
 Provider-supplied conversation IDs populate the inference span and, when it is the
 entry, the Confident thread field. No conversation is inferred from prompt text.

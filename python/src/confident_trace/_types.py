@@ -14,3 +14,13 @@ class ThreadFields(_ThreadOptions, total=False):
 
 class _ThreadWithId(_ThreadOptions):
     id: str
+
+
+class UserFields(TypedDict, total=False):
+    id: str
+    name: str | None
+
+
+class CustomerFields(TypedDict, total=False):
+    id: str
+    name: str | None

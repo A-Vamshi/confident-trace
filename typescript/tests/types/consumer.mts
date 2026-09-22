@@ -88,6 +88,11 @@ const generator: Generator<number, string, boolean> = syncProduce();
 const turnValue: number = turn({ threadId: 'chat' }, () => 2);
 updateSpan({ output: null, retrievalContext: ['document'] });
 updateTrace({ userId: 'user', toolsCalled: [{ name: 'lookup' }] });
+updateTrace({
+  customerId: 'acme',
+  customer: { id: 'acme', name: 'Acme Corp' },
+});
+updateTrace({ user: { id: 'user', name: null } });
 void [sum, asyncValue, genericValue, iterable, generator, turnValue];
 // @ts-expect-error Invalid call argument must not be widened by wrapping.
 add('1', 2);
@@ -104,6 +109,8 @@ span({ anything: true }, () => 1);
 updateSpan({ anything: true });
 // @ts-expect-error Thread fields are a closed typed object.
 updateTrace({ thread: { unknown: true } });
+// @ts-expect-error Customer fields are a closed typed object.
+updateTrace({ customer: { tags: ['no'] } });
 
 // @ts-expect-error Model usage fields require an explicitly typed LLM span.
 span({ type: 'tool', model: 'test' }, () => 1);

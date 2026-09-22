@@ -8,6 +8,14 @@
       "topic": "support"
     }
   },
+  "customer": {
+    "id": "customer-42",
+    "name": "Acme Corp"
+  },
+  "user": {
+    "id": "user-42",
+    "name": "Jane Doe"
+  },
   "llm": {
     "model": "custom-model",
     "provider": "custom",

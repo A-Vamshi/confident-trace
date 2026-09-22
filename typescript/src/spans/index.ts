@@ -21,12 +21,22 @@ import { state, traceContextKey, deferTraceContextKey } from '@/runtime/state';
 import { detachedContext } from '@/runtime/scopes';
 import {
   applyLlmFields,
-  applyThreadFields,
+  applyEntityFields,
   validateFields,
   llmAttributes,
 } from '@/spans/fields';
-import type { ThreadFields, LlmFields } from '@/spans/fields';
-export type { ThreadFields, LlmFields } from '@/spans/fields';
+import type {
+  ThreadFields,
+  CustomerFields,
+  UserFields,
+  LlmFields,
+} from '@/spans/fields';
+export type {
+  ThreadFields,
+  CustomerFields,
+  UserFields,
+  LlmFields,
+} from '@/spans/fields';
 import { VERSION } from '@/runtime/version';
 import * as S from '@/semconv/generated';
 
@@ -45,9 +55,12 @@ export interface SpanFields {
 }
 export interface TraceFields extends SpanFields {
   thread?: ThreadFields;
+  customer?: CustomerFields;
+  user?: UserFields;
   testCaseId?: string;
   tags?: readonly string[];
   userId?: string;
+  customerId?: string;
   threadId?: string;
   turnId?: string;
   environment?: string;
@@ -86,17 +99,26 @@ const traceKeys: Record<string, string> = {
   name: 'name',
   tags: 'tags',
   userId: 'user_id',
+  customerId: 'customer_id',
   threadId: 'thread_id',
   turnId: 'turn_id',
   environment: 'environment',
   testCaseId: 'test_case_id',
 };
-const scalarKeys: Record<string, string> = { metricCollection: 'metric_collection' };
-const spanFields = new Set(['name', ...Object.keys(contentKeys), ...Object.keys(scalarKeys)]);
+const scalarKeys: Record<string, string> = {
+  metricCollection: 'metric_collection',
+};
+const spanFields = new Set([
+  'name',
+  ...Object.keys(contentKeys),
+  ...Object.keys(scalarKeys),
+]);
 const traceFields = new Set([
   ...spanFields,
   ...Object.keys(traceKeys),
   'thread',
+  'customer',
+  'user',
 ]);
 const configuration = ['captureContent', 'maxContentBytes', 'redact', 'tracer'];
 const spanOptions = new Set([
@@ -205,14 +227,21 @@ function apply(
   if (!span.isRecording()) return;
   const attrs = (span as Span & { attributes?: Attributes }).attributes ?? {};
   if (onlyUnset) {
-    fields = Object.fromEntries(Object.entries(fields).filter(([key]) => {
-      if (key === 'thread') return !['confident.trace.thread.id', 'confident.trace.thread_id', 'confident.trace.thread.tags', 'confident.trace.thread.metadata'].some(attr => Object.hasOwn(attrs, attr));
-      const attr = `confident.${scope}.${contentKeys[key] ?? scalarKeys[key] ?? traceKeys[key]}`;
-      return !Object.hasOwn(attrs, attr) && !writes.get(span)?.has(attr);
-    }));
+    fields = Object.fromEntries(
+      Object.entries(fields).filter(([key]) => {
+        if (key === 'thread' || key === 'customer' || key === 'user')
+          return !Object.keys(attrs).some(
+            (attr) =>
+              attr === `confident.trace.${key}_id` ||
+              attr.startsWith(`confident.trace.${key}.`),
+          );
+        const attr = `confident.${scope}.${contentKeys[key] ?? scalarKeys[key] ?? traceKeys[key]}`;
+        return !Object.hasOwn(attrs, attr) && !writes.get(span)?.has(attr);
+      }),
+    );
   }
   if (scope === 'trace')
-    applyThreadFields(span, fields as TraceFields, contentPolicy);
+    applyEntityFields(span, fields as Record<string, unknown>, contentPolicy);
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined) continue;
     if (key === 'name' && scope === 'span') {
@@ -220,7 +249,9 @@ function apply(
       continue;
     }
     const suffix =
-      contentKeys[key] ?? scalarKeys[key] ?? (scope === 'trace' ? traceKeys[key] : undefined);
+      contentKeys[key] ??
+      scalarKeys[key] ??
+      (scope === 'trace' ? traceKeys[key] : undefined);
     if (!suffix) continue;
     const attribute = `confident.${scope}.${suffix}`;
     remember(span, attribute);
@@ -281,7 +312,9 @@ export function traceContext<T>(fields: TraceFields, callback: () => T): T {
   validate(fields, traceFields);
   const parent = context.active();
   const defaults = {
-    ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
+    ...Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== undefined),
+    ),
     ...(parent.getValue(traceContextKey) as TraceFields | undefined),
   };
   update(defaults, 'trace', true);
@@ -289,18 +322,44 @@ export function traceContext<T>(fields: TraceFields, callback: () => T): T {
 }
 
 export function ambientOnStart(span: Span, parent: Context): void {
-  if (isDisabled() || parent.getValue(deferTraceContextKey) || trace.getSpan(parent)?.isRecording()) return;
-  safe(() => apply(span, (parent.getValue(traceContextKey) as TraceFields | undefined) ?? {}, 'trace', state.policy ?? new ContentPolicy(), true));
+  if (
+    isDisabled() ||
+    parent.getValue(deferTraceContextKey) ||
+    trace.getSpan(parent)?.isRecording()
+  )
+    return;
+  safe(() =>
+    apply(
+      span,
+      (parent.getValue(traceContextKey) as TraceFields | undefined) ?? {},
+      'trace',
+      state.policy ?? new ContentPolicy(),
+      true,
+    ),
+  );
   // Give the backend an explicit root name before any child finishes exporting.
   const automatic = span as Span & { name?: string; attributes?: Attributes };
-  const name = automatic.attributes?.['confident.span.integration'] ? automatic.name : undefined;
-  if (name) safe(() => apply(span, { name }, 'trace', state.policy ?? new ContentPolicy(), true));
+  const name = automatic.attributes?.['confident.span.integration']
+    ? automatic.name
+    : undefined;
+  if (name)
+    safe(() =>
+      apply(span, { name }, 'trace', state.policy ?? new ContentPolicy(), true),
+    );
 }
 
 /** Encode ambient defaults for frameworks that export completed native spans. */
-export function ambientTraceAttributes(parent: Context, policy: ContentPolicy): Attributes {
+export function ambientTraceAttributes(
+  parent: Context,
+  policy: ContentPolicy,
+): Attributes {
   const attributes: Attributes = {};
-  if (isDisabled() || parent.getValue(deferTraceContextKey) || trace.getSpan(parent)?.isRecording()) return attributes;
+  if (
+    isDisabled() ||
+    parent.getValue(deferTraceContextKey) ||
+    trace.getSpan(parent)?.isRecording()
+  )
+    return attributes;
   // apply only needs this recording attribute sink; no OTel span is created.
   const sink = {
     attributes,
@@ -310,7 +369,15 @@ export function ambientTraceAttributes(parent: Context, policy: ContentPolicy): 
       return this;
     },
   } as unknown as Span;
-  safe(() => apply(sink, (parent.getValue(traceContextKey) as TraceFields | undefined) ?? {}, 'trace', policy, true));
+  safe(() =>
+    apply(
+      sink,
+      (parent.getValue(traceContextKey) as TraceFields | undefined) ?? {},
+      'trace',
+      policy,
+      true,
+    ),
+  );
   return attributes;
 }
 
@@ -403,16 +470,17 @@ class Operation {
     if (typeof conversation === 'string')
       this.span.setAttribute('gen_ai.conversation.id', conversation);
     if (this.entry)
+      safe(() => apply(this.span, traceValues ?? {}, 'trace', this.policy));
+    if (this.entry) {
       safe(() =>
         apply(
           this.span,
-          traceValues ?? {},
+          (parent.getValue(traceContextKey) as TraceFields | undefined) ?? {},
           'trace',
           this.policy,
+          true,
         ),
       );
-    if (this.entry) {
-      safe(() => apply(this.span, (parent.getValue(traceContextKey) as TraceFields | undefined) ?? {}, 'trace', this.policy, true));
       safe(() => apply(this.span, { name }, 'trace', this.policy, true));
     }
   }

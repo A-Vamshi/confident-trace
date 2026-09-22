@@ -161,7 +161,7 @@ There are no `updateCurrent*` aliases or decorator compiler requirements.
 
 Both scopes accept `input`, `output`, `metadata`, `retrievalContext`, `context`,
 `expectedOutput`, `toolsCalled`, and `expectedTools`. Trace fields additionally
-include `tags`, `userId`, `threadId`, `turnId`, and `environment`. Content uses JSON
+include `tags`, `userId`, `customerId`, `threadId`, `turnId`, and `environment`. Content uses JSON
 strings; camelCase API fields map to snake_case attribute suffixes. Tool calls are
 plain objects. Backend mapping of evaluation fields requires separate verification;
 these helpers do not execute metrics or accept DeepEval metric/test-case objects.
@@ -711,12 +711,18 @@ These helpers do not run evaluations or calculate authoritative totals.
 
 `updateTrace({ testCaseId })` emits `confident.trace.test_case_id`.
 `updateTrace({ thread: { id, tags, metadata } })` and the same options on `turn`
-emit `confident.trace.thread.*`, separate from trace tags/metadata. The ID also
-emits legacy `confident.trace.thread_id`. Conflicting `threadId` and `thread.id`
-values throw. Supplied thread tags/metadata replace the field within the trace;
-omitted fields stay unchanged and metadata obeys content policy. Storage of the
-new namespace, cross-trace merging, and AI Connection linkage require receiver
-verification; no backend changes are included.
+emit one dotted attribute per supplied field: `confident.trace.thread.id`,
+`.tags`, and `.metadata`, separate from trace tags/metadata. The ID also emits
+`confident.trace.thread_id`. Conflicting `threadId` and `thread.id` values
+throw, and metadata obeys content policy.
+
+`userId` and `customerId` associate the trace with an end user and the customer
+(account or organization) the user belongs to. `user: { id, name }` and
+`customer: { id, name }` carry a display name and emit dotted `.id` / `.name`
+attributes plus the shorthand `*_id` attributes. All identity fields work on
+`turn`, `updateTrace`, and `traceContext`. Properties supplied before an ID
+remain on the entry span and are materialized by the receiver once an ID
+arrives. Keep each entity ID stable within a trace.
 
 LLM fields on a non-LLM span are skipped with a warning once per incompatible category per process; general
 fields still apply. Updates without a recording span remain no-ops. The legacy
@@ -744,12 +750,15 @@ trace updates, span updates, and turn creation. They export as
 independent of content capture. Evaluation IDs remain trace-level fields.
 
 ```ts
-traceContext({ metricCollection: 'answer-checks', testCaseId: 'case-1', turnId: 'turn-1' }, () => {
-  withSpan({ name: 'retrieve', metricCollection: 'retrieval-checks' }, () => {
-    updateSpan({ metricCollection: 'updated-retrieval-checks' });
-    updateTrace({ metricCollection: 'updated-answer-checks' });
-  });
-});
+traceContext(
+  { metricCollection: 'answer-checks', testCaseId: 'case-1', turnId: 'turn-1' },
+  () => {
+    withSpan({ name: 'retrieve', metricCollection: 'retrieval-checks' }, () => {
+      updateSpan({ metricCollection: 'updated-retrieval-checks' });
+      updateTrace({ metricCollection: 'updated-answer-checks' });
+    });
+  },
+);
 ```
 
 ## LiteLLM proxy

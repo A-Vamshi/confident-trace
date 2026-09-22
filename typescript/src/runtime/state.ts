@@ -51,8 +51,12 @@ export const requestSuppressionKey = createContextKey(
   'confident-trace.request-suppressed',
 );
 
-export const traceContextKey = createContextKey('confident-trace.trace-context');
-export const deferTraceContextKey = createContextKey('confident-trace.defer-trace-context');
+export const traceContextKey = createContextKey(
+  'confident-trace.trace-context',
+);
+export const deferTraceContextKey = createContextKey(
+  'confident-trace.defer-trace-context',
+);
 
 // Plain output captured by a trusted framework integration, keyed by result identity.
 export const frameworkOutputs = new WeakMap<object, unknown>();

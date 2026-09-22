@@ -34,7 +34,10 @@ export function detachedContext(): Context {
   );
   if (tracingSuppressed())
     parent = suppressTracing(parent).setValue(requestSuppressionKey, true);
-  return parent.setValue(traceContextKey, context.active().getValue(traceContextKey));
+  return parent.setValue(
+    traceContextKey,
+    context.active().getValue(traceContextKey),
+  );
 }
 /** Suppress supported instrumentation; unrelated exporters remain application-owned. */
 export function withTracingSuppressed<T>(callback: () => T): T {

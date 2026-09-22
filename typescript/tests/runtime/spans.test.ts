@@ -424,18 +424,42 @@ it('inherits redaction and honors a global opt-out even for explicit helper fiel
 });
 
 it('supports metric collection scopes and evaluation IDs', async () => {
-  api.traceContext({ metricCollection: 'trace-checks', testCaseId: 'case-1', turnId: 'turn-1' }, () => {
-    api.withSpan({ name: 'root', metricCollection: 'root-checks', captureContent: false }, () => {
-      api.traceContext({ metricCollection: 'ignored' }, () => {
-        api.withSpan({ name: 'child', metricCollection: 'child-checks' }, () => {
-          api.updateSpan({ metricCollection: 'updated-child' });
-        });
+  api.traceContext(
+    {
+      metricCollection: 'trace-checks',
+      testCaseId: 'case-1',
+      turnId: 'turn-1',
+    },
+    () => {
+      api.withSpan(
+        {
+          name: 'root',
+          metricCollection: 'root-checks',
+          captureContent: false,
+        },
+        () => {
+          api.traceContext({ metricCollection: 'ignored' }, () => {
+            api.withSpan(
+              { name: 'child', metricCollection: 'child-checks' },
+              () => {
+                api.updateSpan({ metricCollection: 'updated-child' });
+              },
+            );
+          });
+        },
+      );
+    },
+  );
+  api.turn(
+    { name: 'turn', threadId: 'chat', metricCollection: 'turn-checks' },
+    () => {
+      api.updateTrace({
+        testCaseId: 'case-2',
+        turnId: 'turn-2',
+        metricCollection: 'updated-turn',
       });
-    });
-  });
-  api.turn({ name: 'turn', threadId: 'chat', metricCollection: 'turn-checks' }, () => {
-    api.updateTrace({ testCaseId: 'case-2', turnId: 'turn-2', metricCollection: 'updated-turn' });
-  });
+    },
+  );
   const result = await rows();
   expect(result.root!.attributes).toMatchObject({
     'confident.trace.metric_collection': 'trace-checks',
@@ -443,8 +467,12 @@ it('supports metric collection scopes and evaluation IDs', async () => {
     'confident.trace.test_case_id': 'case-1',
     'confident.trace.turn_id': 'turn-1',
   });
-  expect(result.child!.attributes['confident.span.metric_collection']).toBe('updated-child');
-  expect(result.child!.attributes['confident.trace.metric_collection']).toBeUndefined();
+  expect(result.child!.attributes['confident.span.metric_collection']).toBe(
+    'updated-child',
+  );
+  expect(
+    result.child!.attributes['confident.trace.metric_collection'],
+  ).toBeUndefined();
   expect(result.turn!.attributes).toMatchObject({
     'confident.trace.metric_collection': 'updated-turn',
     'confident.trace.test_case_id': 'case-2',

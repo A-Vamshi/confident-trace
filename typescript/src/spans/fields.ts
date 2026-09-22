@@ -5,6 +5,14 @@ export interface ThreadFields {
   tags?: readonly string[];
   metadata?: Record<string, unknown> | null;
 }
+export interface CustomerFields {
+  id?: string;
+  name?: string | null;
+}
+export interface UserFields {
+  id?: string;
+  name?: string | null;
+}
 export interface LlmFields {
   model?: string;
   provider?: string;
@@ -22,25 +30,51 @@ export const llmAttributes: Record<string, string> = {
   costPerInputToken: 'confident.llm.cost_per_input_token',
   costPerOutputToken: 'confident.llm.cost_per_output_token',
 };
+// Structured trace entities emit one dotted OTEL attribute per field.
+export const entityConfig = {
+  thread: {
+    shorthand: 'threadId',
+    keys: ['id', 'tags', 'metadata'],
+  },
+  customer: {
+    shorthand: 'customerId',
+    keys: ['id', 'name'],
+  },
+  user: {
+    shorthand: 'userId',
+    keys: ['id', 'name'],
+  },
+} as const;
+export type EntityName = keyof typeof entityConfig;
 export function validateFields(fields: object): void {
   const values = fields as Record<string, unknown>;
-  const thread = values.thread as ThreadFields | undefined;
-  if (thread !== undefined) {
+  for (const [entity, config] of Object.entries(entityConfig)) {
+    const value = values[entity] as Record<string, unknown> | undefined;
+    if (value === undefined) continue;
     if (
-      !thread ||
-      typeof thread !== 'object' ||
-      Array.isArray(thread) ||
-      Object.keys(thread).some((k) => !['id', 'tags', 'metadata'].includes(k))
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      Object.keys(value).some(
+        (k) => !(config.keys as readonly string[]).includes(k),
+      )
     )
-      throw new TypeError('thread accepts id, tags, metadata');
-    if (thread.id !== undefined && typeof thread.id !== 'string')
-      throw new TypeError('thread.id must be a string');
+      throw new TypeError(`${entity} accepts ${config.keys.join(', ')}`);
+    if (value.id !== undefined && typeof value.id !== 'string')
+      throw new TypeError(`${entity}.id must be a string`);
     if (
-      thread.id !== undefined &&
-      values.threadId !== undefined &&
-      thread.id !== values.threadId
+      'name' in value &&
+      value.name !== undefined &&
+      value.name !== null &&
+      typeof value.name !== 'string'
     )
-      throw new TypeError('Conflicting thread IDs');
+      throw new TypeError(`${entity}.name must be a string`);
+    if (
+      value.id !== undefined &&
+      values[config.shorthand] !== undefined &&
+      value.id !== values[config.shorthand]
+    )
+      throw new TypeError(`Conflicting ${entity} IDs`);
   }
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined || !llmAttributes[key]) continue;
@@ -66,24 +100,45 @@ export function applyLlmFields(span: Span, fields: LlmFields): void {
       span.setAttribute(llmAttributes[key]!, value);
   }
 }
-export function applyThreadFields(
+export function applyEntityFields(
   span: Span,
-  fields: { thread?: ThreadFields; threadId?: string },
+  fields: Record<string, unknown>,
   policy: ContentPolicy,
 ): void {
   if (!span.isRecording()) return;
-  const id = fields.thread?.id ?? fields.threadId;
-  if (typeof id === 'string') {
-    span.setAttribute('confident.trace.thread.id', id.slice(0, 4096));
-    span.setAttribute('confident.trace.thread_id', id.slice(0, 4096));
-    span.setAttribute('gen_ai.conversation.id', id.slice(0, 4096));
-  }
-  const tags = fields.thread?.tags;
-  if (Array.isArray(tags) && tags.every((v) => typeof v === 'string'))
-    span.setAttribute('confident.trace.thread.tags', tags.slice(0, 128));
-  if (fields.thread?.metadata !== undefined) {
-    const encoded = policy.encode(fields.thread.metadata);
-    if (encoded !== undefined)
-      span.setAttribute('confident.trace.thread.metadata', encoded);
+  for (const [entity, config] of Object.entries(entityConfig) as [
+    EntityName,
+    (typeof entityConfig)[EntityName],
+  ][]) {
+    const value = fields[entity] as Record<string, unknown> | undefined | null;
+    const shorthand = fields[config.shorthand];
+    const id = typeof value?.id === 'string' ? value.id : shorthand;
+    if (value === undefined && typeof id !== 'string') continue;
+    if (typeof id === 'string') {
+      span.setAttribute(`confident.trace.${entity}_id`, id.slice(0, 4096));
+      span.setAttribute(`confident.trace.${entity}.id`, id.slice(0, 4096));
+      if (entity === 'thread')
+        span.setAttribute('gen_ai.conversation.id', id.slice(0, 4096));
+    }
+    if (value) {
+      const tags = value.tags;
+      if (
+        entity === 'thread' &&
+        Array.isArray(tags) &&
+        tags.every((v) => typeof v === 'string')
+      ) {
+        span.setAttribute('confident.trace.thread.tags', tags.slice(0, 128));
+      }
+      if (entity === 'thread' && 'metadata' in value) {
+        const encoded = policy.encode(value.metadata);
+        if (encoded !== undefined)
+          span.setAttribute('confident.trace.thread.metadata', encoded);
+      }
+      if (entity !== 'thread' && typeof value.name === 'string')
+        span.setAttribute(
+          `confident.trace.${entity}.name`,
+          value.name.slice(0, 4096),
+        );
+    }
   }
 }

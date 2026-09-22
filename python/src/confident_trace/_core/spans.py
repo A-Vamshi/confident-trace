@@ -19,7 +19,7 @@ from .. import _attributes as confident
 from .._semconv import genai_v1_37_0 as ai
 from . import runtime as _runtime
 from .safety import safe
-from .scopes import _Scope, _TRACE_CONTEXT, _DEFER_TRACE_CONTEXT, suppressed
+from .scopes import _DEFER_TRACE_CONTEXT, _TRACE_CONTEXT, _Scope, suppressed
 
 _ENTRY = context.create_key(confident.ENTRY_CONTEXT_KEY)
 
@@ -47,9 +47,19 @@ _CONTENT = {
     "tools_called",
     "expected_tools",
 }
-_TRACE = set(confident.TRACE_FIELDS) | _CONTENT | {"test_case_id", "thread"}
+_TRACE = (
+    set(confident.TRACE_FIELDS)
+    | _CONTENT
+    | {"test_case_id"}
+    | set(confident.TRACE_ENTITY_FIELDS)
+)
 _SPAN = _CONTENT | {"name", "metric_collection"}
 _WRITES = WeakKeyDictionary()
+_ENTITY_KEYS = {
+    "thread": frozenset(("id", "tags", "metadata")),
+    "customer": frozenset(("id", "name")),
+    "user": frozenset(("id", "name")),
+}
 _TYPES = ("agent", "llm", "retriever", "tool", "custom")
 SpanType = Literal["agent", "llm", "retriever", "tool", "custom"]
 _LLM = {
@@ -66,18 +76,26 @@ def validate(values, allowed):
     unknown = set(values) - allowed
     if unknown:
         raise TypeError("Unknown tracing fields: " + ", ".join(sorted(unknown)))
-    thread = values.get("thread")
-    if thread is not None:
-        if not isinstance(thread, dict) or set(thread) - {"id", "tags", "metadata"}:
-            raise TypeError("thread accepts id, tags, metadata")
-        if "id" in thread and not isinstance(thread["id"], str):
-            raise TypeError("thread.id must be a string")
+    for entity, accepted in _ENTITY_KEYS.items():
+        value = values.get(entity)
+        if value is None:
+            continue
+        if not isinstance(value, dict) or set(value) - accepted:
+            raise TypeError(entity + " accepts " + ", ".join(sorted(accepted)))
+        if "id" in value and not isinstance(value["id"], str):
+            raise TypeError(entity + ".id must be a string")
         if (
-            "thread_id" in values
-            and "id" in thread
-            and values["thread_id"] != thread["id"]
+            "name" in value
+            and value["name"] is not None
+            and not isinstance(value["name"], str)
         ):
-            raise ValueError("Conflicting thread IDs")
+            raise TypeError(entity + ".name must be a string")
+        if (
+            entity + "_id" in values
+            and "id" in value
+            and values[entity + "_id"] != value["id"]
+        ):
+            raise ValueError("Conflicting " + entity + " IDs")
     for key, value in values.items():
         if key not in _LLM:
             continue
@@ -91,24 +109,46 @@ def validate(values, allowed):
             raise ValueError(key + " must be finite and nonnegative")
 
 
+def _entity_fields(span, entity, value, only_unset):
+    attrs = getattr(span, "attributes", None) or {}
+    if only_unset and (
+        confident.TRACE_FIELDS[entity + "_id"] in attrs
+        or any(attr in attrs for attr in confident.TRACE_ENTITY_FIELDS[entity].values())
+    ):
+        return
+    value = value or {}
+    if isinstance(value.get("id"), str):
+        fields(span, {entity + "_id": value["id"]}, only_unset=only_unset)
+    for field, item in value.items():
+        if field == "id":
+            pass
+        elif (
+            field == "tags"
+            and isinstance(item, (list, tuple))
+            and all(isinstance(v, str) for v in item)
+        ):
+            safe(
+                span.set_attribute,
+                confident.TRACE_ENTITY_FIELDS[entity]["tags"],
+                item[:128],
+            )
+        elif field == "metadata":
+            content(span, confident.TRACE_ENTITY_FIELDS[entity]["metadata"], item)
+        elif field == "name" and (isinstance(item, str) or item is None):
+            if isinstance(item, str):
+                safe(
+                    span.set_attribute,
+                    confident.TRACE_ENTITY_FIELDS[entity]["name"],
+                    item[:4096],
+                )
+
+
 def fields(span, values, *, scope="trace", only_unset=False):
     if not span.is_recording():
         return
     for key, value in values.items():
-        if key == "thread" and scope == "trace":
-            if only_unset and any(attr in (getattr(span, "attributes", None) or {}) for attr in (confident.THREAD_ID, confident.THREAD_TAGS, confident.THREAD_METADATA, confident.TRACE_THREAD_ID)):
-                continue
-            for field, item in (value or {}).items():
-                if field == "id":
-                    fields(span, {"thread_id": item}, only_unset=only_unset)
-                elif field == "metadata":
-                    content(span, confident.THREAD_METADATA, item)
-                elif (
-                    field == "tags"
-                    and isinstance(item, (list, tuple))
-                    and all(isinstance(v, str) for v in item)
-                ):
-                    safe(span.set_attribute, confident.THREAD_TAGS, item[:128])
+        if key in confident.TRACE_ENTITY_FIELDS and scope == "trace":
+            _entity_fields(span, key, value, only_unset)
             continue
         if key not in (_TRACE if scope == "trace" else _SPAN):
             continue
@@ -119,7 +159,10 @@ def fields(span, values, *, scope="trace", only_unset=False):
         attr = (confident.TRACE_FIELDS if scope == "trace" else confident.SPAN_FIELDS)[
             key
         ]
-        if only_unset and (attr in (getattr(span, "attributes", None) or {}) or attr in _WRITES.get(span, ())):
+        if only_unset and (
+            attr in (getattr(span, "attributes", None) or {})
+            or attr in _WRITES.get(span, ())
+        ):
             continue
         if key in _CONTENT:
             _WRITES.setdefault(span, set()).add(attr)
@@ -129,8 +172,18 @@ def fields(span, values, *, scope="trace", only_unset=False):
                 safe(span.set_attribute, attr, value[:128])
         elif type(value) is str:
             safe(span.set_attribute, attr, value[:4096])
+            if (
+                scope == "trace"
+                and key.endswith("_id")
+                and key[:-3] in confident.TRACE_ENTITY_FIELDS
+            ):
+                entity = key[:-3]
+                safe(
+                    span.set_attribute,
+                    confident.TRACE_ENTITY_FIELDS[entity]["id"],
+                    value[:4096],
+                )
             if key == "thread_id":
-                safe(span.set_attribute, confident.THREAD_ID, value[:4096])
                 if (
                     getattr(getattr(span, "instrumentation_scope", None), "name", None)
                     == confident.SCOPE_NAME
@@ -175,10 +228,19 @@ def _prepare_trace_context(ctx, values):
 
 
 def ambient_on_start(span, parent_context=None):
-    if _runtime.disabled() or suppressed(parent_context) or context.get_value(_DEFER_TRACE_CONTEXT, parent_context):
+    if (
+        _runtime.disabled()
+        or suppressed(parent_context)
+        or context.get_value(_DEFER_TRACE_CONTEXT, parent_context)
+    ):
         return
     if not otel.get_current_span(parent_context).is_recording():
-        safe(fields, span, context.get_value(_TRACE_CONTEXT, parent_context) or {}, only_unset=True)
+        safe(
+            fields,
+            span,
+            context.get_value(_TRACE_CONTEXT, parent_context) or {},
+            only_unset=True,
+        )
 
 
 def update_span(**values):
@@ -280,7 +342,12 @@ class Operation:
             parent_span = otel.get_current_span(self.parent).get_span_context()
             defaults = {} if parent_span.is_valid else {"name": name}
             safe(fields, self.span, trace_fields or {})
-            safe(fields, self.span, context.get_value(_TRACE_CONTEXT, self.parent) or {}, only_unset=True)
+            safe(
+                fields,
+                self.span,
+                context.get_value(_TRACE_CONTEXT, self.parent) or {},
+                only_unset=True,
+            )
             safe(fields, self.span, defaults, only_unset=True)
         # Inherit explicit conversation metadata from the entry without reparenting.
         if self.entry is not None:

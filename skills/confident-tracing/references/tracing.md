@@ -65,6 +65,38 @@ synthetic span. Use `suppress_tracing()` for request-scoped suppression and
 `project_context(api_key=...)` for request-scoped project routing. Do not
 switch projects inside an active span.
 
+## Threads, Users, and Customers
+
+`thread_id`, `user_id`, and `customer_id` associate a trace with a
+conversation, an end user, and the customer (account or organization) the user
+belongs to. Each also accepts a structured object that carries extra
+properties: `thread` takes `id`, `tags`, and `metadata`; `user` and `customer`
+take `id` and `name`. All are accepted by `span()`, `turn()`, `update_trace`,
+and `trace_context` in Python and by `turn`, `updateTrace`, and `traceContext`
+in TypeScript.
+
+```python
+ct.update_trace(
+    thread={"id": "chat-42", "tags": ["support"]},
+    user={"id": "user-1", "name": "Jane Doe"},
+    customer={"id": "acme", "name": "Acme Corp"},
+)
+```
+
+```typescript
+updateTrace({
+  thread: { id: "chat-42", tags: ["support"] },
+  user: { id: "user-1", name: "Jane Doe" },
+  customer: { id: "acme", name: "Acme Corp" },
+});
+```
+
+A structured object's `id` must match its shorthand field when both are set.
+Properties may be set before an ID on the same trace; the receiver materializes
+the entity after an ID is provided.
+The SDK emits dotted OpenTelemetry attributes, such as
+`confident.trace.thread.metadata`; keep each entity ID stable within a trace.
+
 ## TypeScript and JavaScript
 
 Install the SDK:

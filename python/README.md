@@ -270,10 +270,19 @@ is performed. Updates require an active recording span.
 `turn(thread_id=..., previous=...)` starts a new trace, optionally linked to a
 previous SpanContext, and supports sync/async scopes. Alternatively supply
 `thread={"id": "chat", "tags": ["support"], "metadata": {"topic": "billing"}}`
-on `turn()` or `update_trace()`. Thread fields emit `confident.trace.thread.*`;
-ID also emits legacy `confident.trace.thread_id`. Conflicting IDs raise. Thread
-metadata/tags remain separate from trace metadata/tags; supplied values replace
-within a trace. Backend merging/storage requires receiver support.
+on `turn()` or `update_trace()`. The thread object emits one
+dotted attribute per supplied field: `confident.trace.thread.id`, `.tags`, and
+`.metadata`; the ID also emits `confident.trace.thread_id`. Conflicting IDs
+raise. Thread metadata/tags remain separate from trace metadata/tags.
+
+`user_id` and `customer_id` associate the trace with an end user and the
+customer (account or organization) the user belongs to. `user={"id": ...,
+"name": ...}` and `customer={"id": ..., "name": ...}` carry a display name and
+emit dotted `.id` / `.name` fields plus shorthand `*_id` attributes. All
+identity fields work on `span()`,
+`turn()`, `update_trace()`, and `trace_context()`. Properties supplied before
+an ID remain on the entry span and are materialized by the receiver once an ID
+arrives. Keep each entity ID stable within a trace.
 `update_trace(test_case_id=...)` emits `confident.trace.test_case_id`; validate
 AI Connection linkage with the receiving deployment.
 

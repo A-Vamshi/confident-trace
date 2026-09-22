@@ -138,7 +138,7 @@ validation.
 - **Application spans:** Python decorators and span scopes; TypeScript function
   wrappers and scoped callbacks. Both support synchronous work, asynchronous
   work, and sync/async generators.
-- **Trace context:** add input, output, metadata, tags, user IDs, and conversation
+- **Trace context:** add input, output, metadata, tags, user and customer IDs, and conversation
   IDs to application traces. TypeScript also provides explicit conversation-turn
   scopes and span-level update helpers.
 - **Existing instrumentation:** export spans through a shared OpenTelemetry

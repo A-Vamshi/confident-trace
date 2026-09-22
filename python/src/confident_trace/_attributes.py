@@ -15,8 +15,16 @@ TRACE_TAGS: Final = "confident.trace.tags"
 TRACE_METADATA: Final = "confident.trace.metadata"
 TRACE_ENVIRONMENT: Final = "confident.trace.environment"
 TRACE_USER_ID: Final = "confident.trace.user_id"
+TRACE_CUSTOMER_ID: Final = "confident.trace.customer_id"
 TRACE_THREAD_ID: Final = "confident.trace.thread_id"
 TRACE_TURN_ID: Final = "confident.trace.turn_id"
+THREAD_ID: Final = "confident.trace.thread.id"
+THREAD_TAGS: Final = "confident.trace.thread.tags"
+THREAD_METADATA: Final = "confident.trace.thread.metadata"
+USER_ID: Final = "confident.trace.user.id"
+USER_NAME: Final = "confident.trace.user.name"
+CUSTOMER_ID: Final = "confident.trace.customer.id"
+CUSTOMER_NAME: Final = "confident.trace.customer.name"
 
 GATEWAY_NAME: Final = "confident.gateway.name"
 
@@ -65,8 +73,20 @@ TRACE_FIELDS = MappingProxyType(
         "metadata": TRACE_METADATA,
         "environment": TRACE_ENVIRONMENT,
         "user_id": TRACE_USER_ID,
+        "customer_id": TRACE_CUSTOMER_ID,
         "thread_id": TRACE_THREAD_ID,
         "turn_id": TRACE_TURN_ID,
+    }
+)
+
+# Structured trace entities emit one dotted OTEL attribute per field.
+TRACE_ENTITY_FIELDS = MappingProxyType(
+    {
+        "thread": MappingProxyType(
+            {"id": THREAD_ID, "tags": THREAD_TAGS, "metadata": THREAD_METADATA}
+        ),
+        "customer": MappingProxyType({"id": CUSTOMER_ID, "name": CUSTOMER_NAME}),
+        "user": MappingProxyType({"id": USER_ID, "name": USER_NAME}),
     }
 )
 
@@ -74,9 +94,6 @@ TRACE_FIELDS = MappingProxyType(
 SPAN_TYPE = "confident.span.type"
 PROJECT_CONTEXT_KEY = "confident_trace.project"
 SUPPRESS_CONTEXT_KEY = "confident_trace.suppressed"
-THREAD_ID = "confident.trace.thread.id"
-THREAD_TAGS = "confident.trace.thread.tags"
-THREAD_METADATA = "confident.trace.thread.metadata"
 LLM_COST_PER_INPUT_TOKEN = "confident.llm.cost_per_input_token"
 LLM_COST_PER_OUTPUT_TOKEN = "confident.llm.cost_per_output_token"
 CONTENT_FIELDS = frozenset(

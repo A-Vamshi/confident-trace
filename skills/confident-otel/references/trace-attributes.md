@@ -9,8 +9,16 @@ Confident AI aggregates them to the trace.
 | `confident.trace.name`              | string      | Human-readable trace name.                                             |
 | `confident.trace.input`             | string      | JSON-encode non-string values.                                         |
 | `confident.trace.output`            | string      | JSON-encode non-string values.                                         |
-| `confident.trace.user_id`           | string      | End-user or customer identifier.                                       |
+| `confident.trace.user_id`           | string      | End-user identifier.                                                   |
+| `confident.trace.user.id`           | string      | Structured end-user ID; must match `user_id` when both are set.        |
+| `confident.trace.user.name`         | string      | End-user display name.                                                 |
+| `confident.trace.customer_id`       | string      | Customer (account or organization) identifier.                         |
+| `confident.trace.customer.id`       | string      | Structured customer ID; must match `customer_id` when both are set.    |
+| `confident.trace.customer.name`     | string      | Customer display name.                                                 |
 | `confident.trace.thread_id`         | string      | Conversation or session thread.                                        |
+| `confident.trace.thread.id`         | string      | Structured thread ID; must match `thread_id` when both are set.        |
+| `confident.trace.thread.tags`       | string list | Thread-level grouping labels.                                          |
+| `confident.trace.thread.metadata`   | JSON string | Thread-level JSON metadata object.                                     |
 | `confident.trace.turn_id`           | string      | Turn identifier.                                                       |
 | `confident.trace.tags`              | string list | Grouping labels.                                                       |
 | `confident.trace.metadata`          | JSON string | JSON-encoded object.                                                   |
@@ -43,6 +51,8 @@ set the environment explicitly rather than relying on a backend default.
 The encoding rules from `span-attributes.md` apply:
 
 - Metadata is a JSON object string.
+- Thread, user, and customer properties use dotted attributes.
+- Always pair a structured entity ID with its shorthand `*_id` attribute.
 - Tags, context, and retrieval context are native OTLP string arrays.
 - Tool-call fields are string arrays whose individual elements are
   JSON-serialized tool calls.

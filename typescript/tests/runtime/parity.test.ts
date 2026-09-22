@@ -60,6 +60,8 @@ it('records shared manual LLM, thread and linkage fields', async () => {
     });
     api.updateTrace({
       thread: V.thread,
+      customer: V.customer,
+      user: V.user,
       testCaseId: V.test_case_id,
       metadata: { trace: true },
     });
@@ -73,18 +75,82 @@ it('records shared manual LLM, thread and linkage fields', async () => {
   expect(a['gen_ai.usage.input_tokens']).toBe(0);
   expect(a['gen_ai.usage.output_tokens']).toBe(5);
   expect(a['confident.llm.cost_per_input_token']).toBe(0);
-  expect(a['confident.trace.thread.id']).toBe('chat-42');
   expect(a['confident.trace.thread_id']).toBe('chat-42');
+  expect(a['confident.trace.thread.id']).toBe('chat-42');
   expect(a['confident.trace.thread.tags']).toEqual(['conversation']);
   expect(JSON.parse(a['confident.trace.thread.metadata'] as string)).toEqual({
     topic: 'support',
   });
+  expect(a['confident.trace.customer_id']).toBe(V.customer.id);
+  expect(a['confident.trace.customer.id']).toBe(V.customer.id);
+  expect(a['confident.trace.customer.name']).toBe(V.customer.name);
+  expect(a['confident.trace.user_id']).toBe(V.user.id);
+  expect(a['confident.trace.user.id']).toBe(V.user.id);
+  expect(a['confident.trace.user.name']).toBe(V.user.name);
+  expect(a['confident.trace.thread']).toBeUndefined();
+  expect(a['confident.trace.customer']).toBeUndefined();
+  expect(a['confident.trace.user']).toBeUndefined();
   expect(a['confident.trace.test_case_id']).toBe('case-42');
   expect(() => api.updateLlmSpan({ inputTokenCount: -1 })).toThrow();
   expect(() => api.updateLlmSpan({ costPerInputToken: NaN })).toThrow();
   expect(() =>
     api.updateTrace({ threadId: 'a', thread: { id: 'b' } }),
   ).toThrow();
+  expect(() =>
+    api.updateTrace({ customerId: 'a', customer: { id: 'b' } }),
+  ).toThrow();
+  expect(() => api.updateTrace({ userId: 'a', user: { id: 'b' } })).toThrow();
+  expect(() =>
+    api.updateTrace({ customer: { id: 'a', tags: ['no'] } as never }),
+  ).toThrow();
+});
+it('supports entity properties across separate updates', async () => {
+  api.withSpan({ name: 'request' }, () => {
+    api.updateTrace({ customer: { name: 'Acme Corp' } });
+    api.updateTrace({ userId: 'user-1' });
+    api.updateTrace({ user: { name: 'Jane' } });
+    api.updateTrace({ customerId: 'acme' });
+    api.updateTrace({ thread: { id: 'chat', metadata: { topic: 'support' } } });
+    api.updateTrace({ thread: { tags: ['priority'] } });
+  });
+  await api.flush();
+  const a = fallback.getFinishedSpans()[0]!.attributes;
+  expect(a['confident.trace.customer_id']).toBe('acme');
+  expect(a['confident.trace.customer.id']).toBe('acme');
+  expect(a['confident.trace.customer.name']).toBe('Acme Corp');
+  expect(a['confident.trace.user.id']).toBe('user-1');
+  expect(a['confident.trace.user.name']).toBe('Jane');
+  expect(a['confident.trace.thread.id']).toBe('chat');
+  expect(a['confident.trace.thread.tags']).toEqual(['priority']);
+  expect(JSON.parse(a['confident.trace.thread.metadata'] as string)).toEqual({
+    topic: 'support',
+  });
+});
+it('keeps safe entity fields when property capture is disabled', async () => {
+  await api.shutdown();
+  trace.disable();
+  context.disable();
+  propagation.disable();
+  vi.resetModules();
+  api = await import('@/index');
+  fallback = new InMemorySpanExporter();
+  api.init({
+    exporter: fallback,
+    captureContent: false,
+    instrumentations: [],
+  });
+  api.withSpan({ name: 'request' }, () => {
+    api.updateTrace({ thread: V.thread, customer: V.customer });
+  });
+  await api.flush();
+  const a = fallback.getFinishedSpans()[0]!.attributes;
+  expect(a['confident.trace.thread_id']).toBe('chat-42');
+  expect(a['confident.trace.thread.id']).toBe('chat-42');
+  expect(a['confident.trace.thread.tags']).toEqual(['conversation']);
+  expect(a['confident.trace.thread.metadata']).toBeUndefined();
+  expect(a['confident.trace.customer_id']).toBe(V.customer.id);
+  expect(a['confident.trace.customer.id']).toBe(V.customer.id);
+  expect(a['confident.trace.customer.name']).toBe(V.customer.name);
 });
 it('isolates concurrent projects and exports child spans before parent ends', async () => {
   const request = (key: string) =>
@@ -102,7 +168,9 @@ it('isolates concurrent projects and exports child spans before parent ends', as
             .getFinishedSpans()
             .map((s) => s.name),
         ).toEqual(['model-' + key]);
-        expect(() => api.projectContext({ apiKey: 'other' }, () => {})).toThrow();
+        expect(() =>
+          api.projectContext({ apiKey: 'other' }, () => {}),
+        ).toThrow();
       }),
     );
   await Promise.all([request('a'), request('b')]);

@@ -24,7 +24,11 @@ def test_fields_and_aliases(telemetry):
             retrieval_context=["doc"],
         )
         ct.update_trace(
-            thread=V["thread"], test_case_id=V["test_case_id"], metadata={"trace": True}
+            thread=V["thread"],
+            customer=V["customer"],
+            user=V["user"],
+            test_case_id=V["test_case_id"],
+            metadata={"trace": True},
         )
         ct.update_llm_span(output_token_count=5)
         return "automatic"
@@ -37,13 +41,19 @@ def test_fields_and_aliases(telemetry):
     assert row["gen_ai.usage.input_tokens"] == 0
     assert row["gen_ai.usage.output_tokens"] == 5
     assert row["confident.llm.cost_per_input_token"] == 0
-    assert (
-        row["confident.trace.thread.id"]
-        == row["confident.trace.thread_id"]
-        == "chat-42"
-    )
+    assert row["confident.trace.thread_id"] == "chat-42"
+    assert row["confident.trace.thread.id"] == "chat-42"
     assert row["confident.trace.thread.tags"] == ("conversation",)
     assert json.loads(row["confident.trace.thread.metadata"]) == {"topic": "support"}
+    assert row["confident.trace.customer_id"] == V["customer"]["id"]
+    assert row["confident.trace.customer.id"] == V["customer"]["id"]
+    assert row["confident.trace.customer.name"] == V["customer"]["name"]
+    assert row["confident.trace.user_id"] == V["user"]["id"]
+    assert row["confident.trace.user.id"] == V["user"]["id"]
+    assert row["confident.trace.user.name"] == V["user"]["name"]
+    assert "confident.trace.thread" not in row
+    assert "confident.trace.customer" not in row
+    assert "confident.trace.user" not in row
     assert json.loads(row["confident.trace.metadata"]) == {"trace": True}
     assert row["confident.trace.test_case_id"] == "case-42"
     with pytest.warns(DeprecationWarning):
@@ -61,6 +71,14 @@ def test_fields_and_aliases(telemetry):
             ct.update_llm_span(**values)
     with pytest.raises(ValueError):
         ct.update_trace(thread_id="one", thread={"id": "two"})
+    with pytest.raises(ValueError):
+        ct.update_trace(customer_id="one", customer={"id": "two"})
+    with pytest.raises(ValueError):
+        ct.update_trace(user_id="one", user={"id": "two"})
+    with pytest.raises(TypeError):
+        ct.update_trace(customer={"id": "one", "tags": ["no"]})
+    with pytest.raises(TypeError):
+        ct.update_trace(user={"id": "one", "name": 7})
 
 
 @pytest.mark.asyncio
@@ -227,13 +245,39 @@ def test_thread_metadata_obeys_content_policy():
     )
     try:
         with ct.span():
-            ct.update_trace(thread=V["thread"])
+            ct.update_trace(thread=V["thread"], customer=V["customer"])
         ct.flush()
         attrs = exporter.get_finished_spans()[0].attributes
-        assert "confident.trace.thread.metadata" not in attrs
+        assert attrs["confident.trace.thread_id"] == "chat-42"
         assert attrs["confident.trace.thread.id"] == "chat-42"
+        assert attrs["confident.trace.thread.tags"] == ("conversation",)
+        assert "confident.trace.thread.metadata" not in attrs
+        assert attrs["confident.trace.customer_id"] == V["customer"]["id"]
+        assert attrs["confident.trace.customer.id"] == V["customer"]["id"]
+        assert attrs["confident.trace.customer.name"] == V["customer"]["name"]
     finally:
         ct.shutdown()
+
+
+def test_nested_entity_properties_support_separate_updates(telemetry):
+    _, exporter = telemetry
+    with ct.span("request"):
+        ct.update_trace(customer={"name": "Acme Corp"})
+        ct.update_trace(user_id="user-1")
+        ct.update_trace(user={"name": "Jane"})
+        ct.update_trace(customer_id="acme")
+        ct.update_trace(thread={"id": "chat", "metadata": {"topic": "support"}})
+        ct.update_trace(thread={"tags": ["priority"]})
+    ct.flush()
+    attrs = exporter.get_finished_spans()[0].attributes
+    assert attrs["confident.trace.customer_id"] == "acme"
+    assert attrs["confident.trace.customer.id"] == "acme"
+    assert attrs["confident.trace.customer.name"] == "Acme Corp"
+    assert attrs["confident.trace.user.id"] == "user-1"
+    assert attrs["confident.trace.user.name"] == "Jane"
+    assert attrs["confident.trace.thread.id"] == "chat"
+    assert attrs["confident.trace.thread.tags"] == ("priority",)
+    assert json.loads(attrs["confident.trace.thread.metadata"]) == {"topic": "support"}
 
 
 def test_real_openai_client_scopes_without_application_decorator():
