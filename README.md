@@ -141,10 +141,8 @@ validation.
 - **Trace context:** add input, output, metadata, tags, user and customer IDs, and conversation
   IDs to application traces. TypeScript also provides explicit conversation-turn
   scopes and span-level update helpers.
-- **Existing instrumentation:** export AI spans from a shared OpenTelemetry
+- **Existing instrumentation:** export spans through a shared OpenTelemetry
   provider while retaining native attributes, events, and parent relationships.
-  Unrelated spans (web server, HTTP client, database) are exported only as
-  ancestors of AI spans; `export_all_spans` / `exportAllSpans` exports everything.
 - **Export and lifecycle:** OTLP over HTTP/protobuf or gRPC, standard OTel
   configuration, batch processing, explicit flush, and shutdown. gRPC requires a
   configured collector or compatible endpoint.

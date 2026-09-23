@@ -22,8 +22,7 @@ response = client.responses.create(model="gpt-4.1-mini", input="Hello")
 That call automatically emits and exports an OTel span. No decorator or manual
 trace submission is required. Calls inherit the current OTel context, so calls
 inside an already-instrumented agent/request join its trace. Without a parent,
-a call starts its own trace. Existing framework AI spans are exported too (see
-[exported spans](#exported-spans)).
+a call starts its own trace. Existing framework OTel spans are exported too.
 
 `@span` is optional: use it to add a custom step or instrument an application
 entry point that does not already emit OTel spans. The current provider
@@ -53,10 +52,10 @@ Version 0.1.0 is the initial release; the API may change before 1.0.0. See the r
 - **Native framework integration:** Pydantic AI, Strands, Google ADK, Microsoft Agent
   Framework, AgentCore, OpenAI Agents (requires the tracing bridge package), and
   Claude Agent SDK (native child-process export). See [setup and native limitations](docs/integrations.md).
-- **Existing OTel spans:** we export AI spans an SDK/framework or external
-  instrumentor already emits through the shared provider, plus their ancestors.
-  Framework instrumentation must already be enabled; backend GenAI interpretation
-  depends on its conventions.
+- **Existing OTel spans:** we export spans an SDK/framework or external instrumentor
+  already emits through the shared provider. Framework instrumentation must already
+  be enabled; backend GenAI interpretation depends on its conventions. Other spans
+  are exported only as parents of GenAI spans unless `init(export_all_spans=True)`.
 - **Custom code:** use the optional `@span` decorator.
 
 See the [support mechanisms and version matrix](docs/compatibility.md) for
@@ -96,9 +95,8 @@ The Confident default endpoint supports HTTP/protobuf. gRPC requires a custom
 endpoint. Authentication and project selection are handled by the backend.
 
 `init(tracer_provider=provider)` adds only a standard batch export pipeline to
-an existing SDK provider, with [export selection](#exported-spans). It does not
-change its resources, sampler, propagator, or other processors. Resource
-arguments apply only when creating a provider.
+an existing SDK provider. It does not change its resources, sampler, propagator,
+or other processors. Resource arguments apply only when creating a provider.
 Without an explicit provider, an existing global provider is reused. Standard
 OTel W3C propagation remains available; the package does not instrument HTTP
 frameworks or install a different propagator.
@@ -109,18 +107,6 @@ reports whether the queue drained, not whether the remote backend accepted data.
 `shutdown(timeout_millis=5000)` returns false if exporter cleanup is still running;
 cleanup continues in a daemon thread. It does not shut down an application-owned
 provider or its other processors. Finish/close active streams before shutdown.
-
-## Exported spans
-
-By default the package exports only spans relevant to Confident AI: its own
-spans and any span with a `confident.*` attribute, a `gen_ai.*` attribute, or a
-`gen_ai.*` event. Other spans on the shared provider, such as FastAPI/ASGI,
-HTTP client, or database spans, are exported only when an exported span sits
-under them, and keep their original parent relationships. A web request that
-runs an agent therefore keeps its request span as the trace root, while its
-`http send`/`http receive` spans and requests with no AI work are not exported.
-Your application's own exporters are unaffected. Pass
-`init(export_all_spans=True)` to export every span.
 
 ## Content and spans
 
@@ -144,9 +130,7 @@ generator's final return value is captured. Explicitly close abandoned generator
 Providers capture bounded streaming output separately.
 
 Use `instrumentations=()` when another instrumentor already covers the provider.
-Existing wrapt wrappers are not stacked. When OpenTelemetry's Google GenAI
-instrumentation is active, the `google_genai` integration stands down so each
-call produces one span. Enabled native integrations add
+Existing wrapt wrappers are not stacked. Enabled native integrations add
 `confident.span.integration` to spans from their exact instrumentation scope.
 Other attributes, events, and schema URLs retain their native conventions.
 
@@ -314,9 +298,8 @@ successful cleanup; active/queued routes are preserved. Flush/shutdown cover all
 owned routes. Independently exporting subprocesses and unrelated exporters keep
 their own configuration.
 
-Spans export in normal batches as they finish, subject to
-[export selection](#exported-spans). There is no late drop flag or whole-trace
-buffering. Outcome-based dropping requires collector tail sampling;
+Spans export in normal batches as they finish. There is no late drop flag or
+whole-trace buffering. Outcome-based dropping requires collector tail sampling;
 a metadata flag without collector configuration drops nothing.
 
 LLM fields on a non-LLM span are skipped with a warning once per incompatible category per process; general

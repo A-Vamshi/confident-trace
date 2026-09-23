@@ -107,9 +107,7 @@ For custom gateway URLs, pass `litellmProxyUrls`, `openrouterProxyUrls`,
 The SDK supports application-owned OpenTelemetry providers and collector
 pipelines. Preserve the application's resources, sampler, propagator, and
 unrelated processors. Do not register a second global provider or duplicate an
-existing exporter. Confident's processor exports only spans with Confident or
-GenAI data plus their ancestors; set `export_all_spans=True` (Python) or
-`exportAllSpans: true` (TypeScript) only when the user needs every span.
+existing exporter.
 
 If the user explicitly wants a vendor-neutral setup with no confident-trace
 package dependency, use the `confident-otel` skill instead.

@@ -272,13 +272,8 @@ it returns an inactive runtime and reports a diagnostic through OTel `diag`.
 Package-level `flush()` and `shutdown()` apply only to the package-owned runtime.
 The processor factory throws on invalid configuration; `init()` catches setup
 failures and returns an inactive runtime with a content-free diagnostic.
-
-The processor exports only spans relevant to Confident AI: spans from its own
-tracer and spans with a `confident.*` attribute, a `gen_ai.*` attribute, or a
-`gen_ai.*` event. Other spans on your provider (HTTP server, HTTP client,
-database) are exported only when an exported span sits under them, keeping their
-original parent relationships. Your other processors still receive every span.
-Pass `createSpanProcessor({ exportAllSpans: true })` to export everything.
+The processor exports only spans with Confident or GenAI data, plus their parents;
+pass `exportAllSpans: true` to export every span.
 
 ## Configuration
 
@@ -287,8 +282,8 @@ Pass `createSpanProcessor({ exportAllSpans: true })` to export everything.
 option takes precedence. Standard OTel endpoint variables are ignored.
 
 `init()` accepts `instrumentations` (`"all"` or an array of integration names), plus camelCase options: `apiKey`, `endpoint`, `protocol`, `headers`,
-`timeoutMillis`, `compression`, `exporter`, `exportAllSpans`, `resourceAttributes`,
-`captureContent`, `maxContentBytes`, and `redact`. The processor factory accepts export options only.
+`timeoutMillis`, `compression`, `exporter`, `exportAllSpans`, `resourceAttributes`, `captureContent`,
+`maxContentBytes`, and `redact`. The processor factory accepts export options only.
 An injected exporter is owned by the resulting processor and bypasses exporter
 configuration. Disabled/invalid-before-construction initialization does not consume it.
 
@@ -689,7 +684,7 @@ alongside `confident.span.integration`:
 
 The attribute is set at span creation (or Mastra export conversion), so streaming
 and failed calls are typed too. OTel kind, GenAI operation, and Mastra's original
-`mastra.span.type` remain available. Exported native application spans are unchanged.
+`mastra.span.type` remain available. Native application spans are unchanged.
 Import `ATTR_CONFIDENT_SPAN_TYPE` from `confident-trace/semconv` to read this field.
 
 ## Request scopes and manual model fields
@@ -705,7 +700,7 @@ keys are never span attributes or baggage.
 Custom exporters require `projectExporterFactory(apiKey)` to create separately
 owned exporters. Idle routes are capped at 64 after successful cleanup, with
 active and queued routes retained. Runtime flush/shutdown include all routes.
-Completed spans still export in ordinary batches, subject to export selection; there is no late drop flag.
+Completed spans still export in ordinary batches; there is no late drop flag.
 Outcome-based whole-trace dropping requires collector tail sampling, not merely
 a metadata field. Independent Mastra exporters, subprocess exporters, and
 unrelated pipelines retain their own configuration.

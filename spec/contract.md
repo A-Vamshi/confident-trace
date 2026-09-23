@@ -4,7 +4,7 @@
 
 Standard OTLP traces, HTTP/protobuf by default, or gRPC with a configured endpoint.
 Confident authentication uses `x-confident-api-key`. There is no Confident wire
-format, REST fallback, or SDK trace aggregation. Exported third-party spans retain their
+format, REST fallback, or SDK trace aggregation. Third-party spans retain their
 attributes, events, and scope schema URL, including unknown convention values,
 except that enabled native integrations stamp `confident.span.integration` with
 the canonical SDK/framework label. Package-owned integrations stamp it at span
@@ -20,18 +20,10 @@ instrumentation of every operation or emission of every signal.
 
 ## Export selection
 
-By default only relevant spans are exported: spans from the SDK's own tracer
-scope, and spans carrying any `confident.*` attribute, any `gen_ai.*` attribute,
-or any `gen_ai.*` event. Other spans on the shared provider, such as web server,
-HTTP client, or database spans, are exported only when they are an open local
-ancestor of an exported span; they are exported when they end. Selection is
-per span at its end: nothing is buffered and no parent ID is rewritten, so every
-exported span keeps its original OpenTelemetry parent. A relevant span that ends
-after its parent ended, or whose parent is remote, is exported without it.
-Spans that use only other AI conventions (for example OpenInference or AI SDK
-`ai.*` attributes) are exported only as ancestors. Python
-`init(export_all_spans=True)` and TypeScript `exportAllSpans: true` export every
-span. Shared cases live in `spec/span-export-vectors.json`.
+Only spans from the SDK's own scope or with a `confident.*`/`gen_ai.*` attribute or
+`gen_ai.*` event are exported, plus their open local ancestors; parent IDs are never
+rewritten. Python `init(export_all_spans=True)` and TypeScript `exportAllSpans: true`
+export every span. Shared cases live in `spec/span-export-vectors.json`.
 
 ## Convention source and release audit
 
