@@ -128,7 +128,7 @@ async def test_trace_fields_on_a_request_span_are_kept(telemetry):
 
 
 @pytest.mark.asyncio
-async def test_export_all_spans_restores_pass_through(telemetry):
+async def test_export_non_ai_spans_restores_pass_through(telemetry):
     provider, _ = telemetry
     everything = witness(provider)
     ct.shutdown()
@@ -137,7 +137,7 @@ async def test_export_all_spans_restores_pass_through(telemetry):
         tracer_provider=provider,
         exporter=exporter,
         instrumentations=(),
-        export_all_spans=True,
+        export_non_ai_spans=True,
     )
 
     await call(provider, ("POST", "/api/v1/chat"), ("GET", "/api/v1/threads"))
@@ -172,14 +172,14 @@ def test_bookkeeping_is_released_and_dropped_spans_stay_clean(telemetry):
     assert router.default.active == 0
 
 
-def test_export_all_spans_keeps_no_ancestry_state(telemetry):
+def test_export_non_ai_spans_keeps_no_ancestry_state(telemetry):
     provider, _ = telemetry
     ct.shutdown()
     ct.init(
         tracer_provider=provider,
         exporter=InMemorySpanExporter(),
         instrumentations=(),
-        export_all_spans=True,
+        export_non_ai_spans=True,
     )
     tracer = provider.get_tracer("web-framework")
     router = routing()

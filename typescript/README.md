@@ -273,7 +273,7 @@ Package-level `flush()` and `shutdown()` apply only to the package-owned runtime
 The processor factory throws on invalid configuration; `init()` catches setup
 failures and returns an inactive runtime with a content-free diagnostic.
 The processor exports only spans with Confident or GenAI data, plus their parents;
-pass `exportAllSpans: true` to export every span.
+pass `exportNonAiSpans: true` to export every span.
 
 ## Configuration
 
@@ -282,7 +282,7 @@ pass `exportAllSpans: true` to export every span.
 option takes precedence. Standard OTel endpoint variables are ignored.
 
 `init()` accepts `instrumentations` (`"all"` or an array of integration names), plus camelCase options: `apiKey`, `endpoint`, `protocol`, `headers`,
-`timeoutMillis`, `compression`, `exporter`, `exportAllSpans`, `resourceAttributes`, `captureContent`,
+`timeoutMillis`, `compression`, `exporter`, `exportNonAiSpans`, `resourceAttributes`, `captureContent`,
 `maxContentBytes`, and `redact`. The processor factory accepts export options only.
 An injected exporter is owned by the resulting processor and bypasses exporter
 configuration. Disabled/invalid-before-construction initialization does not consume it.

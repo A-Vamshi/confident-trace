@@ -22,7 +22,7 @@ instrumentation of every operation or emission of every signal.
 
 Only spans from the SDK's own scope or with a `confident.*`/`gen_ai.*` attribute or
 `gen_ai.*` event are exported, plus their open local ancestors; parent IDs are never
-rewritten. Python `init(export_all_spans=True)` and TypeScript `exportAllSpans: true`
+rewritten. Python `init(export_non_ai_spans=True)` and TypeScript `exportNonAiSpans: true`
 export every span. Shared cases live in `spec/span-export-vectors.json`.
 
 ## Convention source and release audit

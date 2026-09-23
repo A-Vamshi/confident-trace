@@ -26,10 +26,10 @@ const vectors = JSON.parse(
   ),
 ) as { remote_parent: { trace_id: string; span_id: string }; cases: Case[] };
 
-async function run(vector: Case, exportAllSpans: boolean): Promise<string[]> {
+async function run(vector: Case, exportNonAiSpans: boolean): Promise<string[]> {
   const exporter = new InMemorySpanExporter();
   const provider = new NodeTracerProvider({
-    spanProcessors: [createSpanProcessor({ exporter, exportAllSpans })],
+    spanProcessors: [createSpanProcessor({ exporter, exportNonAiSpans })],
   });
   const remote = trace.setSpanContext(ROOT_CONTEXT, {
     traceId: vectors.remote_parent.trace_id,
@@ -74,7 +74,7 @@ it.each(vectors.cases.map((c) => [c.name, c] as const))(
 );
 
 it.each(vectors.cases.map((c) => [c.name, c] as const))(
-  'exportAllSpans exports every ended span: %s',
+  'exportNonAiSpans exports every ended span: %s',
   async (_name, vector) => {
     expect(await run(vector, true)).toEqual(vector.end);
   },

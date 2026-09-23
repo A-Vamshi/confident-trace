@@ -49,7 +49,7 @@ class Route implements RouteScope {
 }
 
 /** Confident-owned or GenAI telemetry; other spans export only as ancestors. */
-function isRelevantSpan(span: ReadableSpan): boolean {
+function isAiSpan(span: ReadableSpan): boolean {
   if (span.instrumentationScope?.name === 'confident-trace') return true;
   const prefixed = (name: string) =>
     name.startsWith('confident.') || name.startsWith('gen_ai.');
@@ -71,7 +71,7 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     private readonly fallback: Route,
     private readonly defaultKey: string | undefined,
     private readonly factory?: (apiKey: string) => SpanExporter,
-    private readonly exportAllSpans = false,
+    private readonly exportNonAiSpans = false,
   ) {}
   acquire(apiKey: string, parent: Context): Route {
     if (this.closed) throw new Error('Tracing is shut down');
@@ -145,7 +145,7 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     }
     route.active++;
     this.spans.set(span, route);
-    if (this.exportAllSpans) return;
+    if (this.exportNonAiSpans) return;
     const parentSpan = trace.getSpan(parent);
     if (parentSpan && !parentSpan.spanContext().isRemote)
       this.parents.set(span, parentSpan);
@@ -160,7 +160,7 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     if (!route) return;
     route.active--;
     if (this.closed) return;
-    if (!this.exportAllSpans && !retained && !isRelevantSpan(span)) return;
+    if (!this.exportNonAiSpans && !retained && !isAiSpan(span)) return;
     for (
       let ancestor = parent;
       ancestor && this.spans.has(ancestor) && !this.retained.has(ancestor);
@@ -229,7 +229,7 @@ export function createSpanProcessor(
       options.apiKey ??
       process.env.CONFIDENT_API_KEY,
     factory,
-    options.exportAllSpans === true,
+    options.exportNonAiSpans === true,
   );
   setProjectRouter(processor);
   return processor;

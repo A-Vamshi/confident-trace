@@ -175,7 +175,7 @@
     },
     {
       "name": "Existing OTel instrumentation",
-      "surfaces": "Confident/GenAI spans and their parents on shared TracerProvider; export_all_spans=True passes everything",
+      "surfaces": "Confident/GenAI spans and their parents on shared TracerProvider; export_non_ai_spans=True passes everything",
       "validation": "Original IDs, parents, attributes, events and schema preserved; framework-specific coverage listed separately"
     },
     {

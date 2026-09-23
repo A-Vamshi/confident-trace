@@ -16,7 +16,7 @@ export interface ExportOptions {
   /** Synchronous factory; each returned exporter is owned by this runtime. */
   projectExporterFactory?: (apiKey: string) => SpanExporter;
   /** Export every span; by default only Confident/GenAI spans and their ancestors export. */
-  exportAllSpans?: boolean;
+  exportNonAiSpans?: boolean;
 }
 
 export interface InitOptions extends ExportOptions, ContentOptions {

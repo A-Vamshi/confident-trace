@@ -42,7 +42,7 @@ application. Spans from an unrelated provider are not collected automatically.
 
 We preserve the source's attributes, events, and schema URL. Spans without GenAI
 or Confident data are exported only as parents of exported spans unless
-`init(export_all_spans=True)`. Exporting a span does not guarantee
+`init(export_non_ai_spans=True)`. Exporting a span does not guarantee
 that the backend recognizes it as an LLM/tool/agent span or extracts its content.
 OpenInference attributes, for example, are not interchangeable with GenAI
 attributes; a source-specific mapping must exist in the backend for rich display.

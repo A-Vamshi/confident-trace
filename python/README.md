@@ -55,7 +55,7 @@ Version 0.1.0 is the initial release; the API may change before 1.0.0. See the r
 - **Existing OTel spans:** we export spans an SDK/framework or external instrumentor
   already emits through the shared provider. Framework instrumentation must already
   be enabled; backend GenAI interpretation depends on its conventions. Other spans
-  are exported only as parents of GenAI spans unless `init(export_all_spans=True)`.
+  are exported only as parents of GenAI spans unless `init(export_non_ai_spans=True)`.
 - **Custom code:** use the optional `@span` decorator.
 
 See the [support mechanisms and version matrix](docs/compatibility.md) for

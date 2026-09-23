@@ -99,7 +99,7 @@ def project_context(*, api_key):
     return _Scope(api_key)
 
 
-def relevant(span):
+def is_ai_span(span):
     """Confident-owned or GenAI telemetry; other spans export only as ancestors."""
     scope = span.instrumentation_scope
     if scope is not None and scope.name == confident.SCOPE_NAME:
@@ -124,17 +124,17 @@ class RoutingProcessor:
 
     Only idle routes are bounded. Active requests and queued spans cannot be
     evicted. The standard batch processor retains its normal bounded queue.
-    Unless export_all_spans is set, only relevant spans export, plus open local
+    Unless export_non_ai_spans is set, only AI spans export, plus open local
     ancestors of exported spans when those ancestors end.
     """
 
     def __init__(
-        self, exporter, factory=None, default_key=None, *, export_all_spans=False
+        self, exporter, factory=None, default_key=None, *, export_non_ai_spans=False
     ):
         self.span_exporter = exporter
         self.default = _Route(exporter)
         self.factory, self.default_key = factory, default_key
-        self.export_all_spans = export_all_spans
+        self.export_non_ai_spans = export_non_ai_spans
         self.routes = OrderedDict()
         self.spans = {}
         self.parents = {}
@@ -220,14 +220,14 @@ class RoutingProcessor:
             self.spans[span.context.span_id] = route
             if route:
                 route.active += 1
-                if not self.export_all_spans:
+                if not self.export_non_ai_spans:
                     parent = span.parent
                     self.parents[span.context.span_id] = (
                         None if parent is None or parent.is_remote else parent.span_id
                     )
 
     def on_end(self, span):
-        keep = self.export_all_spans or relevant(span)
+        keep = self.export_non_ai_spans or is_ai_span(span)
         with self.lock:
             span_id = span.context.span_id
             route = self.spans.pop(span_id, None)

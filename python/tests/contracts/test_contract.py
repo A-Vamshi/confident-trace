@@ -43,7 +43,7 @@ def test_emitted_schema_version(telemetry):
 SPAN_EXPORT = json.loads((ROOT / "spec/span-export-vectors.json").read_text())
 
 
-def run_span_export_case(case, export_all_spans):
+def run_span_export_case(case, export_non_ai_spans):
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -58,7 +58,7 @@ def run_span_export_case(case, export_all_spans):
         tracer_provider=provider,
         exporter=exporter,
         instrumentations=(),
-        export_all_spans=export_all_spans,
+        export_non_ai_spans=export_non_ai_spans,
     )
     remote = SPAN_EXPORT["remote_parent"]
     remote_parent = NonRecordingSpan(
@@ -95,9 +95,9 @@ def run_span_export_case(case, export_all_spans):
 
 @pytest.mark.parametrize("case", SPAN_EXPORT["cases"], ids=lambda c: c["name"])
 def test_span_export_vectors(case):
-    assert run_span_export_case(case, export_all_spans=False) == case["exported"]
+    assert run_span_export_case(case, export_non_ai_spans=False) == case["exported"]
 
 
 @pytest.mark.parametrize("case", SPAN_EXPORT["cases"], ids=lambda c: c["name"])
-def test_span_export_vectors_with_export_all(case):
-    assert run_span_export_case(case, export_all_spans=True) == case["end"]
+def test_span_export_vectors_with_non_ai_spans(case):
+    assert run_span_export_case(case, export_non_ai_spans=True) == case["end"]
