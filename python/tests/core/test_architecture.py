@@ -160,6 +160,7 @@ TELEMETRY_DEFINITIONS = {
     "_attributes.py",
     "_semconv/native.py",
     "integrations/google_adk/_constants.py",
+    "integrations/google_genai/_constants.py",
     "integrations/microsoft_agent_framework/_constants.py",
     "integrations/pydantic_ai/_constants.py",
     "integrations/strands/_constants.py",

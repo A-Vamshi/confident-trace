@@ -104,3 +104,9 @@ compatibility matrix. Backend mapping and metrics/log pipelines are separate wor
 
 - Add native LiteLLM (Python), OpenRouter and Portkey instrumentation, plus explicit LiteLLM, Bifrost and TrueFoundry gateway endpoint identification through supported provider clients.
 - Include gateway configuration, streaming/privacy/error tests and TypeScript preload fixtures.
+
+## Unreleased — Span export selection
+
+- Export only Confident and GenAI spans (own scope, `confident.*` or `gen_ai.*` attributes, `gen_ai.*` events) plus their open local ancestors, so web-server noise such as FastAPI `http send`/`http receive` spans and requests with no AI work are no longer sent. Parent relationships are never rewritten.
+- Add `export_all_spans=True` (Python) / `exportAllSpans: true` (TypeScript) to export every span, and shared `spec/span-export-vectors.json` cases for both SDKs.
+- Python `google_genai` stands down while OpenTelemetry's `GoogleGenAiSdkInstrumentor` is instrumented, so each Gemini call produces one span.

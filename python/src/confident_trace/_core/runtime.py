@@ -132,6 +132,7 @@ def init(
     exporter=None,
     project_exporter_factory=None,
     resource_attributes=None,
+    export_all_spans=False,
     capture_content=True,
     max_content_bytes=16384,
     redact=None,
@@ -250,7 +251,11 @@ def init(
                         }
                         return OTLPSpanExporter(**project_kwargs)
 
-            processor = OwnedProcessor(RoutingProcessor(exporter, factory, default_key))
+            processor = OwnedProcessor(
+                RoutingProcessor(
+                    exporter, factory, default_key, export_all_spans=export_all_spans
+                )
+            )
             provider.add_span_processor(processor)
             runtime = Runtime(
                 provider,

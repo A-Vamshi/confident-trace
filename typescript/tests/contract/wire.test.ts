@@ -107,6 +107,7 @@ it('Confident and explicit HTTP endpoints are complete paths, with explicit head
           ...(endpoint ? { endpoint } : {}),
           apiKey: 'key',
           headers: { 'X-Confident-Api-Key': 'explicit' },
+          exportAllSpans: true,
         }),
       ],
     });
@@ -140,6 +141,7 @@ it('gRPC sends standard OTLP with explicit authentication metadata', async () =>
         endpoint: receiver.url,
         apiKey: 'test-grpc',
         compression: 'gzip',
+        exportAllSpans: true,
       }),
     ],
   });

@@ -9,6 +9,8 @@ contract must not silently change which external telemetry we recognize.
 
 from typing import Final
 
+# Export selection keeps any span carrying GenAI attributes or events.
+GEN_AI_PREFIX: Final = "gen_ai."
 OPERATION_NAME: Final = "gen_ai.operation.name"
 INFERENCE_OPERATIONS: Final = frozenset({"generate_content", "chat"})
 

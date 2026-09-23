@@ -160,8 +160,8 @@
     },
     {
       "name": "Google GenAI",
-      "surfaces": "generate_content; generate_content_stream",
-      "validation": "Sync, async, streaming; mocked SDK transports"
+      "surfaces": "generate_content; generate_content_stream; stands down while OpenTelemetry's GoogleGenAiSdkInstrumentor is instrumented",
+      "validation": "Sync, async, streaming; mocked SDK transports; simulated upstream instrumentor in both wrap orders"
     },
     {
       "name": "AWS Bedrock Runtime (Boto3)",
@@ -175,8 +175,8 @@
     },
     {
       "name": "Existing OTel instrumentation",
-      "surfaces": "Pass-through on shared TracerProvider",
-      "validation": "Original IDs, parents, attributes, events and schema preserved; framework-specific coverage listed separately"
+      "surfaces": "Export selection on shared TracerProvider: Confident/GenAI spans plus their open local ancestors; export_all_spans=True passes everything through",
+      "validation": "Original IDs, parents, attributes, events and schema preserved on exported spans; shared span-export vectors; framework-specific coverage listed separately"
     },
     {
       "name": "Google ADK (native OTel)",
@@ -248,8 +248,8 @@
     "Custom tool arguments/results use confident.span.input/output because standard tool argument/result attributes are absent in 1.37.0.",
     "Cache and reasoning token breakdown attributes from later conventions are not emitted. Input/output totals include available provider-reported components.",
     "No inference of conversations from prompts. Explicit thread_id and provider conversation identifiers populate gen_ai.conversation.id on Confident-owned spans without changing trace parentage. Foreign-span enrichment uses confident.trace.thread_id and preserves native GenAI attributes.",
-    "Native adapter versions listed above are tested versions, not installation or runtime restrictions. Other versions may work but are unverified; missing AgentCore middleware capabilities leave existing native export and application behavior unaffected. No universal duplicate detection; disable overlapping provider instrumentation for unverified native frameworks.",
-    "Unknown fields and enum values in third-party spans pass through unchanged. Registry completeness is not an implementation-coverage claim.",
+    "Native adapter versions listed above are tested versions, not installation or runtime restrictions. Other versions may work but are unverified; missing AgentCore middleware capabilities leave existing native export and application behavior unaffected. No universal duplicate detection; disable overlapping provider instrumentation for unverified native frameworks. The google_genai integration stands down whenever OpenTelemetry's GoogleGenAiSdkInstrumentor is instrumented, without checking which provider that instrumentor exports to.",
+    "Unknown fields and enum values in exported third-party spans pass through unchanged. By default, spans without Confident or GenAI data are exported only as ancestors of exported spans; OpenInference-only spans need export_all_spans=True. Registry completeness is not an implementation-coverage claim.",
     "Bedrock supports Boto3 Converse/ConverseStream only. InvokeModel, InvokeModelWithResponseStream, and native async clients are not included. AgentCore application telemetry is a separate integration. Async applications can offload Boto3 with asyncio.to_thread; cancellation does not cancel the worker request.",
     "Bedrock input totals include provider-reported uncached, cache-read, and cache-write tokens. Resolved model IDs and session IDs are not inferred. Guardrail ID is emitted only when supplied; despite the broad 1.37.0 Bedrock requirement, unguarded calls have no guardrail ID to report.",
     "Native framework spans retain their own content, error capture and conventions. Confident capture/redaction/size limits do not rewrite them. ADK also emits separate OTel logs; no logs pipeline is installed.",

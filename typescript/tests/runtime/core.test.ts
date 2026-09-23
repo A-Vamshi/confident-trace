@@ -33,7 +33,9 @@ it('exports standard spans, preserves async parentage and merges resources', asy
   expect(init()).toBe(runtime);
   await runtime.getTracer().startActiveSpan('parent', async (parent) => {
     await Promise.resolve();
-    const child = trace.getTracer('third-party').startSpan('child');
+    const child = trace.getTracer('third-party').startSpan('child', {
+      attributes: { 'gen_ai.operation.name': 'chat' },
+    });
     child.end();
     parent.end();
   });
@@ -87,7 +89,12 @@ it('factory works with an application-owned provider and package shutdown leaves
   provider.register();
   const { shutdown } = await import('@/runtime/init');
   await shutdown();
-  provider.getTracer('application').startSpan('still alive').end();
+  provider
+    .getTracer('application')
+    .startSpan('still alive', {
+      attributes: { 'gen_ai.operation.name': 'chat' },
+    })
+    .end();
   await provider.forceFlush();
   expect(exporter.getFinishedSpans()).toHaveLength(1);
   expect(other.getFinishedSpans()).toHaveLength(1);

@@ -60,7 +60,9 @@ def init(framework):
 def captured():
     result = spans(exporter)
     if mode != "disabled":
-        assert tuple(result) == external.get_finished_spans()
+        assert tuple(result) == tuple(
+            s for s in external.get_finished_spans() if s.name != "third-party"
+        )
     for span in result:
         if span.instrumentation_scope.name != "confident_trace":
             continue

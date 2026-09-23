@@ -1,0 +1,99 @@
+{
+  "contract_version": "1",
+  "description": "Export selection. Start spans in order, end them in `end` order, then flush. Default exports must equal `exported` (in end order); with export-all they must equal `end`. `@sdk` is the SDK's own tracer scope; a parent of `@remote` is a remote span context.",
+  "remote_parent": {"trace_id": "0af7651916cd43dd8448eb211c80319c", "span_id": "b7ad6b7169203331"},
+  "cases": [
+    {"name": "sdk-scope",
+     "spans": [{"name": "step", "scope": "@sdk"}],
+     "end": ["step"], "exported": ["step"]},
+    {"name": "confident-attribute",
+     "spans": [{"name": "request", "scope": "web", "attributes": {"confident.trace.user_id": "user-1"}}],
+     "end": ["request"], "exported": ["request"]},
+    {"name": "integration-stamp",
+     "spans": [{"name": "agent", "scope": "framework", "attributes": {"confident.span.integration": "Google ADK"}}],
+     "end": ["agent"], "exported": ["agent"]},
+    {"name": "genai-attribute",
+     "spans": [{"name": "model", "scope": "provider", "attributes": {"gen_ai.operation.name": "chat"}}],
+     "end": ["model"], "exported": ["model"]},
+    {"name": "legacy-genai-event",
+     "spans": [{"name": "model", "scope": "provider", "events": ["gen_ai.choice"]}],
+     "end": ["model"], "exported": ["model"]},
+    {"name": "unrelated-traces",
+     "spans": [
+       {"name": "GET /api/v1/threads", "scope": "web"},
+       {"name": "GET /api/v1/threads http send", "scope": "web", "parent": "GET /api/v1/threads"},
+       {"name": "BigQuery.getTable", "scope": "bigquery"},
+       {"name": "GET", "scope": "httpx"}
+     ],
+     "end": ["GET /api/v1/threads http send", "GET /api/v1/threads", "BigQuery.getTable", "GET"],
+     "exported": []},
+    {"name": "prefix-lookalikes",
+     "spans": [{"name": "lookalike", "scope": "app", "attributes": {"gen_ai": "x", "genai.model": "x", "confident_trace.key": "x"}, "events": ["genai.choice"]}],
+     "end": ["lookalike"], "exported": []},
+    {"name": "other-ai-conventions",
+     "spans": [
+       {"name": "openinference", "scope": "app", "attributes": {"openinference.span.kind": "LLM"}},
+       {"name": "ai-sdk", "scope": "app", "attributes": {"ai.prompt": "hello"}}
+     ],
+     "end": ["openinference", "ai-sdk"], "exported": []},
+    {"name": "streaming-request",
+     "spans": [
+       {"name": "POST /api/v1/chat", "scope": "web"},
+       {"name": "POST /api/v1/chat http receive", "scope": "web", "parent": "POST /api/v1/chat"},
+       {"name": "invocation", "scope": "framework", "parent": "POST /api/v1/chat"},
+       {"name": "generate_content", "scope": "provider", "parent": "invocation", "attributes": {"gen_ai.operation.name": "generate_content"}},
+       {"name": "GET", "scope": "httpx", "parent": "generate_content"},
+       {"name": "send-1", "scope": "web", "parent": "POST /api/v1/chat"},
+       {"name": "send-2", "scope": "web", "parent": "POST /api/v1/chat"}
+     ],
+     "end": ["POST /api/v1/chat http receive", "GET", "generate_content", "invocation", "send-1", "send-2", "POST /api/v1/chat"],
+     "exported": ["generate_content", "invocation", "POST /api/v1/chat"]},
+    {"name": "siblings-are-not-retained",
+     "spans": [
+       {"name": "root", "scope": "web"},
+       {"name": "plain", "scope": "web", "parent": "root"},
+       {"name": "model", "scope": "provider", "parent": "root", "attributes": {"gen_ai.operation.name": "chat"}}
+     ],
+     "end": ["plain", "model", "root"], "exported": ["model", "root"]},
+    {"name": "open-ancestor-is-not-flushed",
+     "spans": [
+       {"name": "root", "scope": "web"},
+       {"name": "model", "scope": "provider", "parent": "root", "attributes": {"gen_ai.operation.name": "chat"}}
+     ],
+     "end": ["model"], "exported": ["model"]},
+    {"name": "descendant-ends-after-ancestor",
+     "spans": [
+       {"name": "root", "scope": "web"},
+       {"name": "model", "scope": "provider", "parent": "root", "attributes": {"gen_ai.operation.name": "chat"}}
+     ],
+     "end": ["root", "model"], "exported": ["model"]},
+    {"name": "ended-intermediate-stops-retention",
+     "spans": [
+       {"name": "root", "scope": "web"},
+       {"name": "middle", "scope": "web", "parent": "root"},
+       {"name": "model", "scope": "provider", "parent": "middle", "attributes": {"gen_ai.operation.name": "chat"}}
+     ],
+     "end": ["middle", "model", "root"], "exported": ["model"]},
+    {"name": "remote-parent",
+     "spans": [
+       {"name": "model", "scope": "provider", "parent": "@remote", "attributes": {"gen_ai.operation.name": "chat"}},
+       {"name": "plain", "scope": "web", "parent": "@remote"}
+     ],
+     "end": ["model", "plain"], "exported": ["model"]},
+    {"name": "deep-chain",
+     "spans": [
+       {"name": "a", "scope": "web"},
+       {"name": "b", "scope": "web", "parent": "a"},
+       {"name": "c", "scope": "web", "parent": "b"},
+       {"name": "model", "scope": "provider", "parent": "c", "attributes": {"gen_ai.operation.name": "chat"}}
+     ],
+     "end": ["model", "c", "b", "a"], "exported": ["model", "c", "b", "a"]},
+    {"name": "already-retained-ancestor",
+     "spans": [
+       {"name": "root", "scope": "web"},
+       {"name": "first", "scope": "provider", "parent": "root", "attributes": {"gen_ai.operation.name": "chat"}},
+       {"name": "second", "scope": "provider", "parent": "root", "attributes": {"gen_ai.operation.name": "chat"}}
+     ],
+     "end": ["first", "second", "root"], "exported": ["first", "second", "root"]}
+  ]
+}

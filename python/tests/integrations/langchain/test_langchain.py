@@ -147,7 +147,9 @@ def test_graph_hierarchy_and_tools(tracing):
         """Look up a value."""
         with ct.span("manual-tool"):
             pass
-        with provider.get_tracer("application").start_as_current_span("otel-tool"):
+        with provider.get_tracer("application").start_as_current_span(
+            "otel-tool", attributes={"gen_ai.operation.name": "execute_tool"}
+        ):
             pass
         return query.upper()
 

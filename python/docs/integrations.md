@@ -12,7 +12,7 @@ architecture; it does not mean every provider SDK creates OTel spans itself.
 | Anthropic Python: Messages `create` / `stream` | Confident Trace wraps the SDK methods and creates OTel spans | Automatically instruments the installed SDK | Sync, async, streaming; GenAI 1.37.0 inference attributes; mocked provider tests |
 | Google GenAI Python: `generate_content` / `generate_content_stream` | Confident Trace wraps the SDK methods and creates OTel spans | Automatically instruments the installed SDK | Sync/async surfaces; GenAI 1.37.0 inference attributes; mocked sync and async streaming tests |
 | An SDK/framework already emitting OTel with GenAI conventions | The SDK/framework's own instrumentation | Adds export to the shared SDK TracerProvider; does not enable the framework's instrumentation | Standard span export is supported; richer backend interpretation depends on emitted attributes/version. See separately verified native integrations below |
-| An external OTel instrumentor | That instrumentor | Exports its spans on the shared provider, unchanged | Transport interoperability; conventions and API coverage belong to the external instrumentor, not this release's 1.37.0 pin |
+| An external OTel instrumentor | That instrumentor | Exports its GenAI spans (and their ancestors) on the shared provider, unchanged | Transport interoperability; conventions and API coverage belong to the external instrumentor, not this release's 1.37.0 pin |
 | AWS Bedrock Runtime via Boto3 | Confident Trace wraps Botocore Converse calls | Automatically instruments installed Botocore | Sync Converse and ConverseStream, including real event-stream parsing tests |
 | Custom Python functions | Confident Trace's optional `@span` | No automatic discovery of arbitrary functions | Sync, async, generators, async generators tested |
 
@@ -40,15 +40,22 @@ enables Pydantic AI and Microsoft Agent Framework as described below. Strands an
 Google ADK already emit native spans. Other frameworks must be enabled by the
 application. Spans from an unrelated provider are not collected automatically.
 
-We preserve the source's attributes, events, and schema URL. Plain OTel spans can
-be exported without GenAI conventions, but exporting a span does not guarantee
-that the backend recognizes it as an LLM/tool/agent span or extracts its content.
-OpenInference attributes, for example, are not interchangeable with GenAI
-attributes; a source-specific mapping must exist in the backend for rich display.
+We preserve the source's attributes, events, and schema URL. By default only
+spans with GenAI (`gen_ai.*`) or Confident (`confident.*`) data are exported, plus
+the local ancestors they sit under (for example a FastAPI request span above an
+agent run); other spans such as `http send`/`http receive` or database calls are
+not exported. `init(export_all_spans=True)` exports every span. Exporting a span
+does not guarantee that the backend recognizes it as an LLM/tool/agent span or
+extracts its content. OpenInference-only spans are exported only as ancestors
+unless `export_all_spans=True`; their attributes are not interchangeable with
+GenAI attributes.
 
 Use `init(instrumentations=())` when external instrumentation already covers
 provider calls, or select only the uncovered providers. Existing wrapt wrappers
 are skipped, but this is not universal duplicate detection across frameworks.
+The `google_genai` integration also stands down whenever OpenTelemetry's
+`GoogleGenAiSdkInstrumentor` is instrumented, so each Gemini call yields that
+instrumentation's span only (with its own content-capture setting).
 Third-party capture/redaction settings remain owned by that instrumentation.
 
 The [generated release matrix](compatibility.md) pins only what this package emits. Native and
@@ -117,7 +124,7 @@ bounded content policy. No upstream instrumentor source was copied.
 
 Do not enable overlapping Bedrock instrumentors. Existing wrapt wrappers are
 skipped; this is not universal duplicate detection. Independently emitted OTel
-spans continue through the shared provider unchanged.
+spans continue through the shared provider unchanged, subject to export selection.
 
 Bedrock input-token totals include reported cache-read and cache-write counts,
 as specified by [AWS prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
@@ -133,6 +140,8 @@ The default `google_adk` integration suppresses Confident provider spans only wh
 the current span is an ADK native inference operation on the shared provider.
 Direct provider calls and provider calls made inside tools remain instrumented.
 Keep `google_adk` selected when explicitly selecting `google_genai` in an ADK app.
+If `opentelemetry-instrumentation-google-genai` is also active, Confident's Gemini
+span stands down and that instrumentation's span represents the call.
 
 ADK emits `invocation`, `invoke_agent`, `call_llm`, inference, and tool spans.
 Its `call_llm` span is retained: it carries content that differs from the native
@@ -176,7 +185,7 @@ GenAI conversation attributes are not added or rewritten. It does not inspect re
 
 If AWS/application server instrumentation already provides the active server span,
 or OTel ASGI middleware is already registered on the application, the adapter delegates without creating another server span or modifying that span.
-Framework/application spans are exported unchanged. Other routes, WebSocket, A2A,
+Framework/application spans are exported unchanged when they carry GenAI or Confident data or sit above such spans. Other routes, WebSocket, A2A,
 and cloud-service internal telemetry are outside this integration's support claim.
 AgentCore is a runtime: model, tool, and agent spans still come from provider or
 framework instrumentation inside it. Arbitrary functions are not auto-discovered.

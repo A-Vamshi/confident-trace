@@ -125,7 +125,9 @@ def finish_call(
     return value
 
 
-def wrapper(begin, finish, *, asynchronous=False, manager=None, positional=()):
+def wrapper(
+    begin, finish, *, asynchronous=False, manager=None, positional=(), overlapping=None
+):
     def bypass():
         rt = _runtime.current()
         return (
@@ -134,6 +136,7 @@ def wrapper(begin, finish, *, asynchronous=False, manager=None, positional=()):
             or _runtime.disabled()
             or context.get_value(_SUPPRESS)
             or native_inference_active(rt)
+            or (overlapping is not None and bool(safe(overlapping)))
         )
 
     if asynchronous:

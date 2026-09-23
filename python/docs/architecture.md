@@ -27,7 +27,7 @@ init() → _bootstrap → _core.runtime: provider, processor, exporter configura
 SDK call → integration.instrumentation → shared call lifecycle → core Operation
          → integration.extraction: request attributes and content
 SDK result/events → integration.extraction/streaming → span attributes
-span ends → standard OTel processor → standard OTLP exporter
+span ends → export selection (relevant spans + open ancestors) → standard OTLP exporter
 shutdown() → remove owned patches and close owned resources
 ```
 
@@ -106,7 +106,7 @@ own content, stream lifecycle, convention versions, and span production.
 - `_semconv/genai_v1_37_0.py` is generated from the immutable snapshot and defines
   what Confident-owned instrumentation emits. It remains the emission contract.
 - `_semconv/native.py` contains the small read-only recognition vocabulary used
-  for native inference deduplication. It does not select a schema or import the
+  for native inference deduplication and export selection (`GEN_AI_PREFIX`). It does not select a schema or import the
   generated emission vocabulary. Native scope versions and unknown values pass
   through unchanged; new compatibility aliases require evidence and tests.
 - Integration `_constants.py` modules hold framework-owned identifiers such as

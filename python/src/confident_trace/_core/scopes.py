@@ -15,6 +15,7 @@ from opentelemetry.sdk.environment_variables import OTEL_SDK_DISABLED
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from .. import _attributes as confident
+from .._semconv import native
 
 log = logging.getLogger(confident.SCOPE_NAME)
 
@@ -98,6 +99,17 @@ def project_context(*, api_key):
     return _Scope(api_key)
 
 
+def relevant(span):
+    """Confident-owned or GenAI telemetry; other spans export only as ancestors."""
+    scope = span.instrumentation_scope
+    if scope is not None and scope.name == confident.SCOPE_NAME:
+        return True
+    prefixes = (confident.ATTRIBUTE_PREFIX, native.GEN_AI_PREFIX)
+    if any(key.startswith(prefixes) for key in span.attributes or ()):
+        return True
+    return any(event.name.startswith(native.GEN_AI_PREFIX) for event in span.events)
+
+
 class _Route:
     def __init__(self, exporter, key=None):
         self.key = key
@@ -112,14 +124,21 @@ class RoutingProcessor:
 
     Only idle routes are bounded. Active requests and queued spans cannot be
     evicted. The standard batch processor retains its normal bounded queue.
+    Unless export_all_spans is set, only relevant spans export, plus open local
+    ancestors of exported spans when those ancestors end.
     """
 
-    def __init__(self, exporter, factory=None, default_key=None):
+    def __init__(
+        self, exporter, factory=None, default_key=None, *, export_all_spans=False
+    ):
         self.span_exporter = exporter
         self.default = _Route(exporter)
         self.factory, self.default_key = factory, default_key
+        self.export_all_spans = export_all_spans
         self.routes = OrderedDict()
         self.spans = {}
+        self.parents = {}
+        self.needed = set()
         self.retirements = set()
         self.lock = threading.RLock()
         self.closed = False
@@ -201,13 +220,29 @@ class RoutingProcessor:
             self.spans[span.context.span_id] = route
             if route:
                 route.active += 1
+                if not self.export_all_spans:
+                    parent = span.parent
+                    self.parents[span.context.span_id] = (
+                        None if parent is None or parent.is_remote else parent.span_id
+                    )
 
     def on_end(self, span):
+        keep = self.export_all_spans or relevant(span)
         with self.lock:
-            route = self.spans.pop(span.context.span_id, None)
+            span_id = span.context.span_id
+            route = self.spans.pop(span_id, None)
+            parent = self.parents.pop(span_id, None)
+            if span_id in self.needed:
+                self.needed.discard(span_id)
+                keep = True
             if route is None or self.closed:
                 return
             route.active -= 1
+            if not keep:
+                return
+            while parent in self.parents and parent not in self.needed:
+                self.needed.add(parent)
+                parent = self.parents[parent]
             route.generation += 1
             route.dirty = True
             route.processor.on_end(span)
@@ -240,6 +275,8 @@ class RoutingProcessor:
             routes = [self.default, *self.routes.values()]
             self.routes.clear()
             self.spans.clear()
+            self.parents.clear()
+            self.needed.clear()
             retirements = list(self.retirements)
         for route in routes:
             try:
