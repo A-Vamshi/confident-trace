@@ -1,6 +1,6 @@
 import { ambientOnStart } from '@/spans/index';
 import { diag } from '@opentelemetry/api';
-import type { Context } from '@opentelemetry/api';
+import type { Context, Span as ApiSpan } from '@opentelemetry/api';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import type {
   ReadableSpan,
@@ -49,7 +49,7 @@ class Route implements RouteScope {
 }
 
 /** Confident-owned or GenAI telemetry; other spans export only as ancestors. */
-function relevantSpan(span: ReadableSpan): boolean {
+function isRelevantSpan(span: ReadableSpan): boolean {
   if (span.instrumentationScope?.name === 'confident-trace') return true;
   const prefixed = (name: string) =>
     name.startsWith('confident.') || name.startsWith('gen_ai.');
@@ -63,9 +63,9 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
   private closed = false;
   private closing: Promise<void> | undefined;
   private readonly routes = new Map<string, Route>();
-  private readonly spans = new WeakMap<object, Route>();
-  private readonly parents = new WeakMap<object, object>();
-  private readonly needed = new WeakSet<object>();
+  private readonly spans = new WeakMap<ApiSpan, Route>();
+  private readonly parents = new WeakMap<ApiSpan, ApiSpan>();
+  private readonly retained = new WeakSet<ApiSpan>();
   private readonly retirements = new Set<Promise<void>>();
   constructor(
     private readonly fallback: Route,
@@ -146,25 +146,27 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     route.active++;
     this.spans.set(span, route);
     if (this.exportAllSpans) return;
-    const owner = trace.getSpan(parent);
-    if (owner && !owner.spanContext().isRemote) this.parents.set(span, owner);
+    const parentSpan = trace.getSpan(parent);
+    if (parentSpan && !parentSpan.spanContext().isRemote)
+      this.parents.set(span, parentSpan);
   }
   onEnd(span: ReadableSpan): void {
-    const route = this.spans.get(span);
-    const parent = this.parents.get(span);
-    const needed = this.needed.delete(span);
-    this.spans.delete(span);
-    this.parents.delete(span);
+    const key = span as Span;
+    const route = this.spans.get(key);
+    const parent = this.parents.get(key);
+    const retained = this.retained.delete(key);
+    this.spans.delete(key);
+    this.parents.delete(key);
     if (!route) return;
     route.active--;
     if (this.closed) return;
-    if (!this.exportAllSpans && !needed && !relevantSpan(span)) return;
+    if (!this.exportAllSpans && !retained && !isRelevantSpan(span)) return;
     for (
       let ancestor = parent;
-      ancestor && this.spans.has(ancestor) && !this.needed.has(ancestor);
+      ancestor && this.spans.has(ancestor) && !this.retained.has(ancestor);
       ancestor = this.parents.get(ancestor)
     )
-      this.needed.add(ancestor);
+      this.retained.add(ancestor);
     route.generation++;
     route.dirty = true;
     try {

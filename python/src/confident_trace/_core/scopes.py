@@ -138,7 +138,7 @@ class RoutingProcessor:
         self.routes = OrderedDict()
         self.spans = {}
         self.parents = {}
-        self.needed = set()
+        self.retained = set()
         self.retirements = set()
         self.lock = threading.RLock()
         self.closed = False
@@ -232,16 +232,16 @@ class RoutingProcessor:
             span_id = span.context.span_id
             route = self.spans.pop(span_id, None)
             parent = self.parents.pop(span_id, None)
-            if span_id in self.needed:
-                self.needed.discard(span_id)
+            if span_id in self.retained:
+                self.retained.discard(span_id)
                 keep = True
             if route is None or self.closed:
                 return
             route.active -= 1
             if not keep:
                 return
-            while parent in self.parents and parent not in self.needed:
-                self.needed.add(parent)
+            while parent in self.parents and parent not in self.retained:
+                self.retained.add(parent)
                 parent = self.parents[parent]
             route.generation += 1
             route.dirty = True
@@ -276,7 +276,7 @@ class RoutingProcessor:
             self.routes.clear()
             self.spans.clear()
             self.parents.clear()
-            self.needed.clear()
+            self.retained.clear()
             retirements = list(self.retirements)
         for route in routes:
             try:

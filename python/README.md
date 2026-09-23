@@ -22,8 +22,8 @@ response = client.responses.create(model="gpt-4.1-mini", input="Hello")
 That call automatically emits and exports an OTel span. No decorator or manual
 trace submission is required. Calls inherit the current OTel context, so calls
 inside an already-instrumented agent/request join its trace. Without a parent,
-a call starts its own trace. Existing framework OTel spans that carry GenAI data are
-exported too; see [exported spans](#exported-spans).
+a call starts its own trace. Existing framework AI spans are exported too (see
+[exported spans](#exported-spans)).
 
 `@span` is optional: use it to add a custom step or instrument an application
 entry point that does not already emit OTel spans. The current provider
@@ -96,8 +96,9 @@ The Confident default endpoint supports HTTP/protobuf. gRPC requires a custom
 endpoint. Authentication and project selection are handled by the backend.
 
 `init(tracer_provider=provider)` adds only a standard batch export pipeline to
-an existing SDK provider; that pipeline applies [export selection](#exported-spans). It does not change its resources, sampler, propagator,
-or other processors. Resource arguments apply only when creating a provider.
+an existing SDK provider, with [export selection](#exported-spans). It does not
+change its resources, sampler, propagator, or other processors. Resource
+arguments apply only when creating a provider.
 Without an explicit provider, an existing global provider is reused. Standard
 OTel W3C propagation remains available; the package does not instrument HTTP
 frameworks or install a different propagator.

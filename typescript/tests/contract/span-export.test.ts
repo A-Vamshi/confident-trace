@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { ROOT_CONTEXT, trace, TraceFlags } from '@opentelemetry/api';
 import type { Attributes, Span } from '@opentelemetry/api';
 import { InMemorySpanExporter } from '@opentelemetry/sdk-trace-base';
-import type { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { expect, it } from 'vitest';
 import { createSpanProcessor } from '@/runtime/processor';
@@ -39,6 +38,7 @@ async function run(vector: Case, exportAllSpans: boolean): Promise<string[]> {
     isRemote: true,
   });
   const started = new Map<string, Span>();
+  const parentIds = new Map<string, string | undefined>();
   try {
     for (const spec of vector.spans) {
       const scope = spec.scope === '@sdk' ? 'confident-trace' : spec.scope;
@@ -53,15 +53,13 @@ async function run(vector: Case, exportAllSpans: boolean): Promise<string[]> {
         .startSpan(spec.name, { attributes: spec.attributes ?? {} }, parent);
       for (const event of spec.events ?? []) span.addEvent(event);
       started.set(spec.name, span);
+      parentIds.set(spec.name, trace.getSpan(parent)?.spanContext().spanId);
     }
     for (const name of vector.end) started.get(name)!.end();
     await provider.forceFlush();
     const exported = exporter.getFinishedSpans();
     for (const span of exported)
-      expect(span.parentSpanContext?.spanId).toBe(
-        (started.get(span.name) as unknown as ReadableSpan).parentSpanContext
-          ?.spanId,
-      );
+      expect(span.parentSpanContext?.spanId).toBe(parentIds.get(span.name));
     return exported.map((span) => span.name);
   } finally {
     await provider.shutdown();

@@ -35,17 +35,21 @@ def register_native_inference(
     return [remove]
 
 
+def same_provider(span, rt):
+    # OTel exposes no public span-to-provider link. Compare the SDK processor
+    # identity conservatively: native settings can select a non-global provider.
+    # If a future SDK changes these internals, keep the provider wrapper active.
+    processor = getattr(span, "_span_processor", None)
+    return processor is not None and processor is getattr(
+        rt.provider, "_active_span_processor", None
+    )
+
+
 def native_inference_active(rt):
     if not _NATIVE_INFERENCE_SCOPES:
         return False
     current = trace.get_current_span()
-    # OTel exposes no public span-to-provider link. Compare the SDK processor
-    # identity conservatively: native settings can select a non-global provider.
-    # If a future SDK changes these internals, keep the provider wrapper active.
-    processor = getattr(current, "_span_processor", None)
-    if processor is None or processor is not getattr(
-        rt.provider, "_active_span_processor", None
-    ):
+    if not same_provider(current, rt):
         return False
     scope = getattr(current, "instrumentation_scope", None)
     registration = _NATIVE_INFERENCE_SCOPES.get(scope.name) if scope else None
@@ -126,7 +130,13 @@ def finish_call(
 
 
 def wrapper(
-    begin, finish, *, asynchronous=False, manager=None, positional=(), overlapping=None
+    begin,
+    finish,
+    *,
+    asynchronous=False,
+    manager=None,
+    positional=(),
+    stand_down_when=None,
 ):
     def bypass():
         rt = _runtime.current()
@@ -136,7 +146,7 @@ def wrapper(
             or _runtime.disabled()
             or context.get_value(_SUPPRESS)
             or native_inference_active(rt)
-            or (overlapping is not None and bool(safe(overlapping)))
+            or (stand_down_when is not None and bool(safe(stand_down_when, rt)))
         )
 
     if asynchronous:

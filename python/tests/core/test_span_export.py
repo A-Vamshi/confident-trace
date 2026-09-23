@@ -168,7 +168,7 @@ def test_bookkeeping_is_released_and_dropped_spans_stay_clean(telemetry):
             pass
 
     assert [s.name for s in spans(exporter)] == ["chat", "request"]
-    assert router.spans == {} and router.parents == {} and router.needed == set()
+    assert router.spans == {} and router.parents == {} and router.retained == set()
     assert router.default.active == 0
 
 
@@ -220,5 +220,5 @@ def test_shutdown_clears_ancestry_state(telemetry):
     span = tracer.start_span("request")
     assert router.parents
     ct.shutdown()
-    assert router.parents == {} and router.needed == set()
+    assert router.parents == {} and router.retained == set()
     span.end()

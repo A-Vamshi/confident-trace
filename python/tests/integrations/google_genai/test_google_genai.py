@@ -153,3 +153,21 @@ def test_keeps_our_span_when_google_instrumentation_is_not_active(
     assert _generate().text == "hello"
     (llm,) = spans(exporter)
     assert llm.instrumentation_scope.name == "confident_trace"
+
+
+def test_keeps_our_span_when_enclosing_google_span_uses_another_provider(
+    telemetry, monkeypatch
+):
+    import types as pytypes
+
+    from opentelemetry.sdk.trace import TracerProvider
+
+    _google_instrumentation(
+        monkeypatch, pytypes.SimpleNamespace(is_instrumented_by_opentelemetry=True)
+    )
+    exporter = enable(telemetry, "google_genai")
+    _official_wrapper(monkeypatch, TracerProvider())
+
+    assert _generate().text == "hello"
+    (llm,) = spans(exporter)
+    assert llm.instrumentation_scope.name == "confident_trace"
