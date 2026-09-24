@@ -50,6 +50,10 @@ class OwnedProcessor(SpanProcessor):
         if disabled():
             return
         self.delegate.on_start(span, parent_context)
+        from .observation import observe_start
+        from .safety import safe
+
+        safe(observe_start, span, parent_context, self)
         try:
             from .spans import ambient_on_start
 

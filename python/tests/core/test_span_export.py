@@ -168,7 +168,11 @@ def test_bookkeeping_is_released_and_dropped_spans_stay_clean(telemetry):
             pass
 
     assert [s.name for s in spans(exporter)] == ["chat", "request"]
-    assert router.spans == {} and router.parents == {} and router.retained == set()
+    assert (
+        router.spans == {}
+        and router.ancestry.nodes == {}
+        and not router.ancestry.pending
+    )
     assert router.default.active == 0
 
 
@@ -184,7 +188,7 @@ def test_export_non_ai_spans_keeps_no_ancestry_state(telemetry):
     tracer = provider.get_tracer("web-framework")
     router = routing()
     with tracer.start_as_current_span("request"):
-        assert router.parents == {}
+        assert router.ancestry.nodes == {}
 
 
 def test_suppressed_parent_is_never_retained(telemetry):
@@ -199,7 +203,7 @@ def test_suppressed_parent_is_never_retained(telemetry):
     assert spans(exporter) == ()
 
 
-def test_descendant_ending_after_its_ancestor_exports_alone(telemetry):
+def test_descendant_ending_after_its_ancestor_keeps_parent(telemetry):
     provider, exporter = telemetry
     tracer = provider.get_tracer("web-framework")
     request = tracer.start_span("request")
@@ -210,7 +214,7 @@ def test_descendant_ending_after_its_ancestor_exports_alone(telemetry):
     )
     request.end()
     child.end()
-    assert [s.name for s in spans(exporter)] == ["background chat"]
+    assert [s.name for s in spans(exporter)] == ["request", "background chat"]
 
 
 def test_shutdown_clears_ancestry_state(telemetry):
@@ -218,7 +222,7 @@ def test_shutdown_clears_ancestry_state(telemetry):
     tracer = provider.get_tracer("web-framework")
     router = routing()
     span = tracer.start_span("request")
-    assert router.parents
+    assert router.ancestry.nodes
     ct.shutdown()
-    assert router.parents == {} and router.retained == set()
+    assert router.ancestry.nodes == {} and not router.ancestry.pending
     span.end()

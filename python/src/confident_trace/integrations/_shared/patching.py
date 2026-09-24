@@ -7,14 +7,14 @@ import wrapt
 from ..._core import runtime
 
 
-def install_targets(targets, wrapper_factory):
+def install_targets(targets, wrapper_factory, *, allow_wrapped=False):
     undo = []
     for module, class_name, method in targets:
         try:
             loaded = importlib.import_module(module)
             cls = getattr(loaded, class_name) if class_name else loaded
             original = getattr(cls, method)
-            if isinstance(
+            if not allow_wrapped and isinstance(
                 original,
                 (wrapt.ObjectProxy, wrapt.FunctionWrapper, wrapt.BoundFunctionWrapper),
             ):

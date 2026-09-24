@@ -110,12 +110,10 @@ compatibility matrix. Backend mapping and metrics/log pipelines are separate wor
 - Export only spans with Confident or GenAI data plus their parents; `export_non_ai_spans=True` (Python) / `exportNonAiSpans: true` (TypeScript) exports every span.
 - Python `google_genai` stands down while OpenTelemetry's `GoogleGenAiSdkInstrumentor` is active, so each Gemini call produces one span.
 
-## Unreleased — LiveKit Agents
+## Unreleased — Preserve early-ending ancestors
 
-- Add native LiveKit Agents tracing for Python and TypeScript: LiveKit spans are labelled `LiveKit` and exported, and each model call appears once.
-
-## Unreleased — LiveKit client reliability
-
-- Flush Python and TypeScript spans after LiveKit job cleanup, including spans produced by asynchronous shutdown callbacks.
-- Install Python LiveKit privacy filtering regardless of import order when sharing the Confident provider.
-- Support OpenAI 6.8.1–6.x alongside 7.10.0–7.x in TypeScript, including the LiveKit OpenAI plugin's client when native spans use a separate provider.
+- Python and TypeScript retain ancestors while tracked descendants remain active,
+  including when an HTTP parent ends before an AI child. Completed AI spans stream
+  immediately; pending payloads are bounded and pressure/flush favors ancestry.
+- Google deduplication observes public span callbacks and retains fallback telemetry
+  for separate providers in either installation order, including streaming calls.
