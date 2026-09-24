@@ -1,7 +1,7 @@
 import { Ancestry, spanKey } from '@/runtime/ancestry';
 import { ambientOnStart } from '@/spans/index';
 import { diag } from '@opentelemetry/api';
-import type { Context } from '@opentelemetry/api';
+import type { Context, Span as ApiSpan } from '@opentelemetry/api';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import type {
   ReadableSpan,
@@ -109,7 +109,7 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     this.trim();
   }
   owns(span: ApiSpan): boolean {
-    return this.spans.has(span);
+    return this.spans.has(spanKey(span.spanContext()));
   }
   private trim(): void {
     const idle = [...this.routes].filter(
