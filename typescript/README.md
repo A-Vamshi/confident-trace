@@ -674,14 +674,13 @@ for the framework.
 Call `init()` at the top of the agent file and start the worker with
 `node --import confident-trace/register agent.js start`. Each call runs in a job
 process that inherits the preload and re-imports the file, so every call is traced.
-Spans are flushed when the job shuts down.
+Spans are flushed after session finalization and all shutdown callbacks settle,
+with a five-second budget. This also covers jobs that fail before connecting.
 
 Each call becomes one trace of LiveKit's native spans (session, turns, LLM
 requests, tools, speech timing), labelled `LiveKit`. LiveKit's LLM span records
 each model call, so a provider span inside it is skipped and cost is counted once.
-LiveKit's OpenAI plugin uses `openai` 6, so the `openai: unsupported SDK version`
-warning is expected. With npm, install `openai@7` next to `confident-trace` to
-satisfy its optional peer. If LiveKit's tracer is unset, `init()` points it at the
+LiveKit's OpenAI 6 plugin client is supported alongside OpenAI 7. If LiveKit's tracer is unset, `init()` points it at the
 Confident provider and keeps LiveKit Cloud export working. A provider set with
 `telemetry.setTracerProvider()` is left alone. `captureContent` and redaction apply
 only to Confident spans; set `LIVEKIT_TELEMETRY_ALLOW_PII=0` to strip LiveKit's

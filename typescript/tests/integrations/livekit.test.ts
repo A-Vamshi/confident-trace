@@ -9,7 +9,7 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { JobContext, telemetry } from '@livekit/agents';
+import { telemetry } from '@livekit/agents';
 import OpenAI from 'openai';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { InitOptions } from '@/config/types';
@@ -133,22 +133,82 @@ it('leaves LiveKit spans unlabelled when not selected', async () => {
     expect(span.attributes['confident.span.integration']).toBeUndefined();
 });
 
-it('flushes pending spans when a LiveKit job shuts down', async () => {
+it('flushes after cleanup, preserves failures, and installs only once', async () => {
   const exporter = new InMemorySpanExporter();
   const { init } = await import('@/runtime/init');
   const { attachLiveKit } = await import('@/auto/livekit');
-  init({ exporter });
-  attachLiveKit({ JobContext, telemetry });
-  // A connected job context; connect() then returns without a room.
-  const job = Object.assign(Object.create(JobContext.prototype), {
-    connected: true,
-    shutdownCallbacks: [],
-  }) as JobContext;
-  await job.connect();
-  await job.connect();
-  expect(job.shutdownCallbacks).toHaveLength(1);
-  telemetry.tracer.startSpan({ name: 'agent_session' }).end();
-  expect(scoped(exporter, 'livekit-agents')).toEqual([]);
-  await job.shutdownCallbacks[0]!();
-  expect(scoped(exporter, 'livekit-agents')).toHaveLength(1);
+  const runtime = init({ exporter });
+  attachLiveKit({ telemetry });
+  const failure = new Error('cleanup failed');
+  const lifecycle = {
+    async flushJobLogs() {
+      telemetry.tracer.startSpan({ name: 'late_cleanup' }).end();
+      throw failure;
+    },
+  };
+  attachLiveKit(lifecycle);
+  const wrapped = lifecycle.flushJobLogs;
+  attachLiveKit(lifecycle);
+  expect(lifecycle.flushJobLogs).toBe(wrapped);
+  await expect(lifecycle.flushJobLogs()).rejects.toBe(failure);
+  expect(scoped(exporter, 'livekit-agents').map((s) => s.name)).toEqual([
+    'late_cleanup',
+  ]);
+  const flush = vi
+    .spyOn(runtime, 'flush')
+    .mockRejectedValue(new Error('export failure'));
+  await expect(lifecycle.flushJobLogs()).rejects.toBe(failure);
+  expect(flush).toHaveBeenCalledWith(5000);
+  flush.mockRestore();
+});
+
+it('does not flush deselected LiveKit lifecycle hooks', async () => {
+  const { init } = await import('@/runtime/init');
+  const { attachLiveKit } = await import('@/auto/livekit');
+  const runtime = init({
+    exporter: new InMemorySpanExporter(),
+    instrumentations: [],
+  });
+  const flush = vi.spyOn(runtime, 'flush');
+  const lifecycle = {
+    async flushJobLogs() {
+      return 42;
+    },
+  };
+  attachLiveKit(lifecycle);
+  expect(await lifecycle.flushJobLogs()).toBe(42);
+  expect(flush).not.toHaveBeenCalled();
+});
+
+it('installs privacy filtering when LiveKit inherited our provider', async () => {
+  vi.stubEnv('LIVEKIT_TELEMETRY_ALLOW_PII', '0');
+  try {
+    const exporter = new InMemorySpanExporter();
+    const { init } = await import('@/runtime/init');
+    const { state } = await import('@/runtime/state');
+    const { attachLiveKit } = await import('@/auto/livekit');
+    const runtime = init({ exporter });
+    telemetry.tracer.setProvider(state.ownedProvider!.tracerProvider);
+    attachLiveKit({ telemetry });
+    const span = telemetry.tracer.startSpan({ name: 'agent_session' });
+    span.setAttribute('lk.pii.user_transcript', 'private transcript');
+    span.end();
+    await runtime.flush();
+    expect(exporter.getFinishedSpans()).toHaveLength(1);
+    expect(
+      exporter.getFinishedSpans()[0]!.attributes['lk.pii.user_transcript'],
+    ).toBeUndefined();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+it('reports an unsupported worker lifecycle instead of silently skipping the flush', async () => {
+  const { init } = await import('@/runtime/init');
+  const { attachLiveKit } = await import('@/auto/livekit');
+  const runtime = init({ exporter: new InMemorySpanExporter() });
+  attachLiveKit({}, '/node_modules/@livekit/agents/dist/job_lifecycle.js');
+  expect(runtime.getInstrumentationStatus().integrations.livekit).toBe(
+    'failed',
+  );
 });

@@ -144,3 +144,89 @@ async def test_unselected_livekit_keeps_provider_spans():
     livekit = by_scope(captured, "livekit-agents")
     assert livekit
     assert all("confident.span.integration" not in s.attributes for s in livekit)
+
+
+@pytest.mark.parametrize("import_first", [False, True])
+def test_privacy_import_order(import_first, monkeypatch):
+    monkeypatch.setenv("LIVEKIT_TELEMETRY_ALLOW_PII", "0")
+    if import_first:
+        from livekit.agents import telemetry
+    exporter = InMemorySpanExporter()
+    ct.init(exporter=exporter, instrumentations=("livekit",))
+    from livekit.agents import telemetry
+
+    with telemetry.tracer.start_as_current_span("agent_session") as span:
+        span.set_attribute("lk.pii.user_transcript", "private transcript")
+        span.set_attribute("gen_ai.input.messages", "private prompt")
+    ct.flush()
+    attrs = exporter.get_finished_spans()[0].attributes
+    assert "lk.pii.user_transcript" not in attrs
+    assert "gen_ai.input.messages" not in attrs
+
+
+@pytest.mark.asyncio
+async def test_cleanup_flush_preserves_exception(monkeypatch):
+    from livekit.agents import JobContext, telemetry
+
+    failure = ValueError("cleanup failed")
+
+    async def cleanup(self):
+        with telemetry.tracer.start_as_current_span("cleanup"):
+            pass
+        raise failure
+
+    monkeypatch.setattr(JobContext, "_on_cleanup", cleanup)
+    exporter = InMemorySpanExporter()
+    ct.init(exporter=exporter, instrumentations=("livekit",))
+    with pytest.raises(ValueError) as caught:
+        await JobContext._on_cleanup(object())
+    assert caught.value is failure
+    assert [s.name for s in exporter.get_finished_spans()] == ["cleanup"]
+    ct.shutdown()
+    assert JobContext._on_cleanup is cleanup
+
+
+@pytest.mark.asyncio
+async def test_cleanup_flush_is_bounded(monkeypatch):
+    import time
+
+    from livekit.agents import JobContext
+
+    async def cleanup(self):
+        return "finished"
+
+    monkeypatch.setattr(JobContext, "_on_cleanup", cleanup)
+    runtime = ct.init(exporter=InMemorySpanExporter(), instrumentations=("livekit",))
+
+    def stuck_flush(timeout):
+        assert timeout == 5000
+        time.sleep(10)
+        return True
+
+    monkeypatch.setattr(runtime.processor, "force_flush", stuck_flush)
+    start = time.monotonic()
+    assert await JobContext._on_cleanup(object()) == "finished"
+    assert 4.5 < time.monotonic() - start < 7
+    ct.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_flush_failure_does_not_replace_cleanup_error(monkeypatch):
+    from livekit.agents import JobContext
+
+    failure = ValueError("cleanup failed")
+
+    async def cleanup(self):
+        raise failure
+
+    monkeypatch.setattr(JobContext, "_on_cleanup", cleanup)
+    runtime = ct.init(exporter=InMemorySpanExporter(), instrumentations=("livekit",))
+
+    def broken_flush(timeout):
+        raise RuntimeError("export failed")
+
+    monkeypatch.setattr(runtime.processor, "force_flush", broken_flush)
+    with pytest.raises(ValueError) as caught:
+        await JobContext._on_cleanup(object())
+    assert caught.value is failure
+    ct.shutdown()

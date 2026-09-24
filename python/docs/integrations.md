@@ -353,6 +353,8 @@ and [Strands tracing](https://strandsagents.com/docs/user-guide/observability-ev
 Call `init()` at the top of the agent file, before `cli.run_app(...)`. LiveKit
 runs each call in its own process that re-imports this file, so every call is
 traced. Calling `init()` inside the entrypoint misses the call's root span.
+Confident flushes after LiveKit finishes job cleanup and closes its root span,
+with a five-second budget; failed exports do not stop worker termination.
 
 ```python
 import confident_trace as ct

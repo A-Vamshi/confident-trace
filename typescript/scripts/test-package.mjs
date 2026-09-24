@@ -173,9 +173,12 @@ try {
     'portkey-ai',
     '@anthropic-ai/sdk',
     '@google/genai',
+    'langchain',
     '@langchain/core',
     '@langchain/langgraph',
     '@openai/agents',
+    '@livekit/agents',
+    '@livekit/agents-plugin-openai',
     '@mastra/core',
     '@mastra/observability',
     'ai',
@@ -214,6 +217,10 @@ try {
       recursive: true,
     });
   }
+  await cp(
+    join(root, 'scripts/test-framework-loading.mjs'),
+    join(temporary, 'scripts/test-framework-loading.mjs'),
+  );
   for (const script of ['test-auto.mjs', 'test-auto-examples.mjs']) {
     await cp(join(root, 'scripts', script), join(temporary, 'scripts', script));
     process.stdout.write(

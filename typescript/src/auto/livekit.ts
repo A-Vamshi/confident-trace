@@ -1,28 +1,39 @@
-import { ProxyTracerProvider } from '@opentelemetry/api';
-import { enabled, onActivate } from '@/auto/control';
+import { diag, ProxyTracerProvider } from '@opentelemetry/api';
+import { enabled, failed, onActivate } from '@/auto/control';
 import { observed, replace } from '@/auto/patch';
 import type { Foreign } from '@/auto/patch';
 import { SCOPE } from '@/integrations/livekit';
 import { state } from '@/runtime/state';
 import { INTEGRATIONS } from '@/semconv/generated';
 
-const flushing = new WeakSet<object>();
-export function attachLiveKit(exports: Foreign): void {
-  // Every job calls ctx.connect(); its process exits right after shutdown
-  // callbacks, before batched spans would otherwise export.
-  if (exports.JobContext)
+export function attachLiveKit(exports: Foreign, modulePath = ''): void {
+  if (
+    /[/\\]job_lifecycle\.[cm]?js$/.test(modulePath) &&
+    typeof exports.flushJobLogs !== 'function'
+  ) {
+    failed('livekit');
+    return;
+  }
+  // The worker awaits this lifecycle stage after session finalization and all
+  // concurrent shutdown callbacks, including jobs that never connected.
+  if (typeof exports.flushJobLogs === 'function')
     replace(
-      exports.JobContext.prototype,
-      'connect',
+      exports,
+      'flushJobLogs',
       (original) =>
-        function (this: Foreign, ...args: Foreign[]) {
-          if (enabled('livekit') && !flushing.has(this)) {
-            flushing.add(this);
-            this.addShutdownCallback(async () => {
-              await state.runtime?.flush();
-            });
+        async function (this: Foreign, ...args: Foreign[]) {
+          try {
+            return await original.apply(this, args);
+          } finally {
+            if (enabled('livekit')) {
+              try {
+                if (!(await state.runtime?.flush(5000)))
+                  diag.debug('LiveKit final span flush failed or timed out');
+              } catch {
+                diag.debug('LiveKit final span flush failed or timed out');
+              }
+            }
           }
-          return original.apply(this, args);
         },
     );
   const telemetry = exports.telemetry ?? exports;
@@ -36,7 +47,8 @@ export function attachLiveKit(exports: Foreign): void {
     const owned = state.ownedProvider;
     if (
       !owned ||
-      !(telemetry.tracer.getProvider() instanceof ProxyTracerProvider)
+      (telemetry.tracer.getProvider() !== owned.tracerProvider &&
+        !(telemetry.tracer.getProvider() instanceof ProxyTracerProvider))
     )
       return;
     telemetry.setTracerProvider(owned.tracerProvider, {

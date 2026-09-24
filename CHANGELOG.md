@@ -113,3 +113,9 @@ compatibility matrix. Backend mapping and metrics/log pipelines are separate wor
 ## Unreleased — LiveKit Agents
 
 - Add native LiveKit Agents tracing for Python and TypeScript: LiveKit spans are labelled `LiveKit` and exported, and each model call appears once.
+
+## Unreleased — LiveKit client reliability
+
+- Flush Python and TypeScript spans after LiveKit job cleanup, including spans produced by asynchronous shutdown callbacks.
+- Install Python LiveKit privacy filtering regardless of import order when sharing the Confident provider.
+- Support OpenAI 6.8.1–6.x alongside 7.10.0–7.x in TypeScript, including the LiveKit OpenAI plugin's client when native spans use a separate provider.

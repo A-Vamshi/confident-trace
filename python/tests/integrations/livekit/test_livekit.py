@@ -43,6 +43,11 @@ def livekit_environment():
         "test_unconfigured_livekit_tracer_uses_our_provider",
         "test_configured_livekit_tracer_is_preserved",
         "test_unselected_livekit_keeps_provider_spans",
+        "test_privacy_import_order[False]",
+        "test_privacy_import_order[True]",
+        "test_cleanup_flush_preserves_exception",
+        "test_cleanup_flush_is_bounded",
+        "test_flush_failure_does_not_replace_cleanup_error",
     ],
 )
 def test_livekit_scenario(scenario, livekit_environment, tmp_path):
@@ -55,6 +60,26 @@ def test_livekit_scenario(scenario, livekit_environment, tmp_path):
             "-p",
             "pytest_asyncio.plugin",
             f"{HERE / 'livekit_scenarios.py'}::{scenario}",
+        ],
+        env=livekit_environment,
+        cwd=tmp_path,
+        check=True,
+        timeout=60,
+    )
+
+
+@pytest.mark.parametrize("method", ["spawn", "forkserver"])
+def test_worker_exit(method, livekit_environment, tmp_path):
+    import multiprocessing
+
+    if method not in multiprocessing.get_all_start_methods():
+        pytest.skip(f"{method} is unavailable")
+    subprocess.run(
+        [
+            sys.executable,
+            str(HERE / "worker_exit.py"),
+            method,
+            str(tmp_path / "spans.json"),
         ],
         env=livekit_environment,
         cwd=tmp_path,

@@ -4,7 +4,7 @@ import { init } from 'confident-trace';
 import { InMemorySpanExporter } from '@opentelemetry/sdk-trace-base';
 import { ProxyTracerProvider } from '@opentelemetry/api';
 import { GoogleGenAI } from '@google/genai';
-import { JobContext, telemetry } from '@livekit/agents';
+import { telemetry } from '@livekit/agents';
 
 // Built entry points bundle separately; the provider wrapper must see the
 // processor init() created to recognize LiveKit's model call.
@@ -51,11 +51,31 @@ assert.equal(
   1,
 );
 
-const job = Object.assign(Object.create(JobContext.prototype), {
-  connected: true,
-  shutdownCallbacks: [],
-});
-await job.connect();
-assert.equal(job.shutdownCallbacks.length, 1);
+// Exercise the installed worker's actual concurrent-callback and final-log stages.
+const { createRequire } = await import('node:module');
+const { dirname, join } = await import('node:path');
+const { pathToFileURL } = await import('node:url');
+const require = createRequire(import.meta.url);
+const lifecycle = await import(
+  pathToFileURL(
+    join(dirname(require.resolve('@livekit/agents')), 'job_lifecycle.js'),
+  )
+);
+const logger = { error() {}, warn() {}, debug() {} };
+await lifecycle.runShutdownCallbacks(
+  [
+    async () => {
+      throw new Error('cleanup failure');
+    },
+    async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      telemetry.tracer.startSpan({ name: 'late_cleanup' }).end();
+    },
+  ],
+  logger,
+);
+assert.ok(!sink.getFinishedSpans().some((s) => s.name === 'late_cleanup'));
+await lifecycle.flushJobLogs(logger);
+assert.ok(sink.getFinishedSpans().some((s) => s.name === 'late_cleanup'));
 await rt.shutdown();
 console.log('LiveKit automatic integration passed');
