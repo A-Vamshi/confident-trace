@@ -29,7 +29,9 @@ async def test_request_context_and_stream(native, preinstrumented, stream):
 
         @app.entrypoint
         async def invoke(payload, context):
-            with tracer.start_as_current_span("application-step") as span:
+            with tracer.start_as_current_span(
+                "application-step", attributes={"gen_ai.agent.name": "support"}
+            ) as span:
                 span.set_attribute("session.id", context.session_id)
                 span.add_event("native-event", {"value": "unchanged"})
                 assert BedrockAgentCoreContext.get_session_id() == context.session_id
@@ -40,7 +42,9 @@ async def test_request_context_and_stream(native, preinstrumented, stream):
 
         @app.entrypoint
         def invoke(payload, context):
-            with tracer.start_as_current_span("application-step") as span:
+            with tracer.start_as_current_span(
+                "application-step", attributes={"gen_ai.agent.name": "support"}
+            ) as span:
                 span.set_attribute("session.id", context.session_id)
                 span.add_event("native-event", {"value": "unchanged"})
                 assert BedrockAgentCoreContext.get_session_id() == context.session_id
@@ -331,7 +335,9 @@ async def test_middleware_capabilities_fail_open(native, monkeypatch, capability
     @app.entrypoint
     def invoke(payload):
         invocations.append(True)
-        with trace.get_tracer("application").start_as_current_span("existing-native"):
+        with trace.get_tracer("application").start_as_current_span(
+            "existing-native", attributes={"gen_ai.agent.name": "support"}
+        ):
             return {"ok": True}
 
     async with httpx.AsyncClient(

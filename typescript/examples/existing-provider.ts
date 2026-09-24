@@ -7,7 +7,10 @@ const provider = new NodeTracerProvider({
   spanProcessors: [createSpanProcessor({ exporter })],
 });
 provider.register();
-provider.getTracer('application').startSpan('work').end();
+provider
+  .getTracer('application')
+  .startSpan('work', { attributes: { 'gen_ai.operation.name': 'chat' } })
+  .end();
 await provider.forceFlush();
 console.log(exporter.getFinishedSpans().map((span) => span.name));
 // The application, not confident-trace.shutdown(), owns this lifecycle.

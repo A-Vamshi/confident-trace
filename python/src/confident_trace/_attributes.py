@@ -5,6 +5,8 @@ from types import MappingProxyType
 from typing import Final
 
 SCOPE_NAME: Final = "confident_trace"
+ATTRIBUTE_PREFIX: Final = "confident."
+NATIVE_OBSERVER_CONTEXT_KEY: Final = "confident_trace.native_observer"
 ENTRY_CONTEXT_KEY: Final = "confident_trace.entry"
 PROVIDER_CALL_CONTEXT_KEY: Final = "confident_trace.provider_call"
 

@@ -75,9 +75,11 @@ def test_native_scope_stamp_and_shutdown(telemetry, monkeypatch):
             "native", attributes={"native.field": "kept"}
         ) as s:
             s.add_event("native-event")
-        with provider.get_tracer("unrelated").start_as_current_span("unrelated"):
+        with provider.get_tracer("unrelated").start_as_current_span(
+            "unrelated"
+        ) as unrelated:
             pass
-        native, unrelated = spans(exporter)
+        (native,) = spans(exporter)
         assert native.attributes[attrs.SPAN_INTEGRATION] == "Google ADK"
         assert native.attributes["native.field"] == "kept"
         assert native.events[0].name == "native-event"

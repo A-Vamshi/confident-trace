@@ -396,7 +396,7 @@ async def flow():
         @listen(begin)
         def left(self, value):
             with provider.get_tracer("application").start_as_current_span(
-                "manual left"
+                "manual left", attributes={"gen_ai.agent.name": "workflow"}
             ):
                 return value + " left"
 

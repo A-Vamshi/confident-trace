@@ -54,7 +54,8 @@ Version 0.1.0 is the initial release; the API may change before 1.0.0. See the r
   Claude Agent SDK (native child-process export). See [setup and native limitations](docs/integrations.md).
 - **Existing OTel spans:** we export spans an SDK/framework or external instrumentor
   already emits through the shared provider. Framework instrumentation must already
-  be enabled; backend GenAI interpretation depends on its conventions.
+  be enabled; backend GenAI interpretation depends on its conventions. Other spans
+  are exported only as parents of GenAI spans unless `init(export_non_ai_spans=True)`.
 - **Custom code:** use the optional `@span` decorator.
 
 See the [support mechanisms and version matrix](docs/compatibility.md) for
@@ -505,3 +506,28 @@ name guessing is used; configure custom or hosted endpoints explicitly. Client
 URLs and authentication headers are not exported. This is application-side tracing;
 Google GenAI/Bedrock gateway detection and gateway-internal routing/retries are
 outside this integration's scope.
+
+### Ancestor retention and long-running agents
+
+The default filter exports Confident/GenAI spans and their tracked local ancestors.
+Completed selected spans export immediately; they do not wait for the root agent
+or request to finish. An ended infrastructure span is retained only while a
+tracked descendant could still qualify. If that descendant becomes an AI span,
+its ended ancestors are exported with their original IDs, parents, timestamps,
+attributes and events. Otherwise the pending branch is discarded when its last
+tracked descendant finishes. Other exporters on the provider are unaffected.
+
+Pending ended payloads are limited per processor to 1,024 spans or 16 MiB of
+estimated payload, including attributes, events, links, resource and scope data.
+The estimate is conservative accounting, not a process RSS guarantee. Overflow
+exports the oldest pending ancestor and required ancestors instead of breaking
+relationships. Explicit flush and shutdown also export pending ancestors
+conservatively; these operations can therefore send extra infrastructure spans.
+Shutdown never ends active application spans.
+
+Active ancestry bookkeeping has no age expiry and remains proportional to
+tracked unfinished work and its required ancestor chains. A five-hour agent
+can stream completed spans throughout its run without buffering its entire
+trace. Standard batch queue limits, sampling and delivery failures still apply.
+Unobserved remote parents and children first started after ancestry was discarded
+cannot be reconstructed by this local filter.

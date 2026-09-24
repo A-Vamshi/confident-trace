@@ -1,3 +1,4 @@
+import { Ancestry, spanKey } from '@/runtime/ancestry';
 import { ambientOnStart } from '@/spans/index';
 import { diag } from '@opentelemetry/api';
 import type { Context } from '@opentelemetry/api';
@@ -16,7 +17,7 @@ import type { ExportOptions } from '@/config/types';
 import { createHttpExporter } from '@/exporters/http';
 import { createGrpcExporter } from '@/exporters/grpc';
 
-import { context, ROOT_CONTEXT } from '@opentelemetry/api';
+import { context, ROOT_CONTEXT, trace } from '@opentelemetry/api';
 import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
 import {
   projectKey,
@@ -48,16 +49,31 @@ class Route implements RouteScope {
   }
 }
 
+/** Confident-owned or GenAI telemetry; other spans export only as ancestors. */
+function isAiSpan(span: ReadableSpan): boolean {
+  if (span.instrumentationScope?.name === 'confident-trace') return true;
+  const prefixed = (name: string) =>
+    name.startsWith('confident.') || name.startsWith('gen_ai.');
+  return (
+    Object.keys(span.attributes).some(prefixed) ||
+    span.events.some((event) => event.name.startsWith('gen_ai.'))
+  );
+}
+
 class RoutingProcessor implements SpanProcessor, ProjectRouter {
   private closed = false;
   private closing: Promise<void> | undefined;
   private readonly routes = new Map<string, Route>();
-  private readonly spans = new WeakMap<Span, Route>();
+  private readonly spans = new Map<string, Route>();
+  private readonly ancestry = new Ancestry<Route>((route, span) =>
+    this.publish(route, span),
+  );
   private readonly retirements = new Set<Promise<void>>();
   constructor(
     private readonly fallback: Route,
     private readonly defaultKey: string | undefined,
     private readonly factory?: (apiKey: string) => SpanExporter,
+    private readonly exportNonAiSpans = false,
   ) {}
   acquire(apiKey: string, parent: Context): Route {
     if (this.closed) throw new Error('Tracing is shut down');
@@ -130,14 +146,30 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
       }
     }
     route.active++;
-    this.spans.set(span, route);
+    const key = spanKey(span.spanContext());
+    this.spans.set(key, route);
+    if (this.exportNonAiSpans) return;
+    const parentContext = trace.getSpanContext(parent);
+    this.ancestry.start(
+      key,
+      parentContext && !parentContext.isRemote
+        ? spanKey(parentContext)
+        : undefined,
+      route,
+      isAiSpan(span),
+    );
   }
   onEnd(span: ReadableSpan): void {
-    const route = this.spans.get(span as Span);
-    this.spans.delete(span as Span);
-    if (!route) return;
-    route.active--;
-    if (this.closed) return;
+    const key = spanKey(span.spanContext());
+    const route = this.spans.get(key);
+    this.spans.delete(key);
+    if (!route || this.closed) return;
+    if (this.exportNonAiSpans) {
+      route.active--;
+      this.publish(route, span);
+    } else this.ancestry.end(key, span, isAiSpan(span));
+  }
+  private publish(route: Route, span: ReadableSpan): void {
     route.generation++;
     route.dirty = true;
     try {
@@ -148,6 +180,7 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
   }
   async forceFlush(): Promise<void> {
     if (this.closed) return this.closing;
+    this.ancestry.flushPending();
     await Promise.all(
       [this.fallback, ...this.routes.values()].map((r) => r.flush()),
     );
@@ -156,6 +189,9 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
   }
   shutdown(): Promise<void> {
     if (!this.closing) {
+      this.ancestry.flushPending();
+      this.ancestry.clear();
+      this.spans.clear();
       this.closed = true;
       this.closing = Promise.all([
         ...[this.fallback, ...this.routes.values()].map((r) =>
@@ -200,6 +236,7 @@ export function createSpanProcessor(
       options.apiKey ??
       process.env.CONFIDENT_API_KEY,
     factory,
+    options.exportNonAiSpans === true,
   );
   setProjectRouter(processor);
   return processor;

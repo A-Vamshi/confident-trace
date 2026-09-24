@@ -50,6 +50,10 @@ class OwnedProcessor(SpanProcessor):
         if disabled():
             return
         self.delegate.on_start(span, parent_context)
+        from .observation import observe_start
+        from .safety import safe
+
+        safe(observe_start, span, parent_context, self)
         try:
             from .spans import ambient_on_start
 
@@ -132,6 +136,7 @@ def init(
     exporter=None,
     project_exporter_factory=None,
     resource_attributes=None,
+    export_non_ai_spans=False,
     capture_content=True,
     max_content_bytes=16384,
     redact=None,
@@ -250,7 +255,14 @@ def init(
                         }
                         return OTLPSpanExporter(**project_kwargs)
 
-            processor = OwnedProcessor(RoutingProcessor(exporter, factory, default_key))
+            processor = OwnedProcessor(
+                RoutingProcessor(
+                    exporter,
+                    factory,
+                    default_key,
+                    export_non_ai_spans=export_non_ai_spans,
+                )
+            )
             provider.add_span_processor(processor)
             runtime = Runtime(
                 provider,

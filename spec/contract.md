@@ -18,6 +18,13 @@ Package instrumentation uses semantic conventions **1.37.0** and scope schema
 `https://opentelemetry.io/schemas/1.37.0`. Registry completeness does not imply
 instrumentation of every operation or emission of every signal.
 
+## Export selection
+
+Only spans from the SDK's own scope or with a `confident.*`/`gen_ai.*` attribute or
+`gen_ai.*` event are exported, plus their tracked local ancestors (including ended ancestors with active descendants); parent IDs are never
+rewritten. Python `init(export_non_ai_spans=True)` and TypeScript `exportNonAiSpans: true`
+export every span. Shared cases live in `spec/span-export-vectors.json`.
+
 ## Convention source and release audit
 
 `genai/1.37.0.json` is the language-neutral snapshot. It contains resolved attribute
@@ -102,3 +109,9 @@ Modern GenAI log events are a separate signal, not legacy span events.
 extraction. Python tests validate its emitted OTLP and upstream message schemas.
 Future languages consume the same registry and vectors. SDK CI is independent of
 backend code, receiver deployment, and ClickHouse storage.
+
+Ancestor selection is monotonic. Ended unresolved ancestors remain eligible until
+their tracked subtree finishes. Payload pressure (1,024 spans / estimated 16 MiB)
+and explicit flush/shutdown conservatively export pending ancestors. Completed
+selected spans are never delayed for an active root. Export-all bypasses ancestry
+selection. No span identifiers, relationships, timestamps or payloads are rewritten.

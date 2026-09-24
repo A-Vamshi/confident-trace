@@ -159,7 +159,9 @@ it('isolates concurrent projects and exports child spans before parent ends', as
         await Promise.resolve();
         trace
           .getTracer('native-provider')
-          .startSpan('model-' + key)
+          .startSpan('model-' + key, {
+            attributes: { 'gen_ai.operation.name': 'chat' },
+          })
           .end();
         await api.flush();
         expect(
@@ -182,7 +184,9 @@ it('isolates concurrent projects and exports child spans before parent ends', as
       'request-' + key,
     ]);
   const late = api.projectContext({ apiKey: 'a' }, () =>
-    trace.getTracer('native').startSpan('late'),
+    trace.getTracer('native').startSpan('late', {
+      attributes: { 'gen_ai.operation.name': 'chat' },
+    }),
   );
   late.end();
   await api.flush();
@@ -270,7 +274,9 @@ it('cleans idle exporters without losing active or delayed spans', async () => {
   });
   const generator = api.projectContext({ apiKey: 'old' }, delayed);
   const active = api.projectContext({ apiKey: 'active' }, () =>
-    trace.getTracer('native').startSpan('active'),
+    trace.getTracer('native').startSpan('active', {
+      attributes: { 'gen_ai.operation.name': 'chat' },
+    }),
   );
   for (let i = 0; i < 70; i++) {
     api.projectContext({ apiKey: String(i) }, () => api.withSpan({}, () => {}));

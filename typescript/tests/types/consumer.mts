@@ -13,7 +13,9 @@ const options: InitOptions = {
 const runtime: TraceRuntime = init(options);
 const tracer = runtime.getTracer();
 tracer.startSpan(SCHEMA_URL).end();
-const processor: SpanProcessor = createSpanProcessor();
+const processor: SpanProcessor = createSpanProcessor({
+  exportNonAiSpans: true,
+});
 void processor;
 const message: GenAiMessage = {
   role: 'user',
@@ -24,6 +26,8 @@ void message;
 init({ api_key: 'no' });
 // @ts-expect-error Protocol is a closed set of supported transports.
 init({ protocol: 'http/json' });
+// @ts-expect-error Export selection is a boolean switch.
+init({ exportNonAiSpans: 'yes' });
 // @ts-expect-error Runtime state is readonly.
 runtime.active = false;
 

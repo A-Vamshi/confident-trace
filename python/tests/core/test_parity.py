@@ -129,7 +129,7 @@ async def test_concurrent_project_routing_and_early_export():
                     await asyncio.sleep(0)
                     # An undecorated provider call: routing is captured by the processor.
                     with provider.get_tracer("provider").start_as_current_span(
-                        "model-" + key
+                        "model-" + key, attributes={"gen_ai.operation.name": "chat"}
                     ):
                         pass
                     ct.flush()
@@ -153,7 +153,9 @@ async def test_concurrent_project_routing_and_early_export():
             )
         # A span can end after its project scope exits.
         with ct.project_context(api_key="a"):
-            late = provider.get_tracer("provider").start_span("late")
+            late = provider.get_tracer("provider").start_span(
+                "late", attributes={"gen_ai.operation.name": "chat"}
+            )
         late.end()
         ct.flush()
         assert destinations["a"].get_finished_spans()[-1].name == "late"
