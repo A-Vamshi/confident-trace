@@ -26,6 +26,7 @@ try {
   run('tests/auto/smoke.mjs', preload);
   run('tests/auto/dynamic.mjs', preload);
   run('tests/auto/frameworks.mjs', preload);
+  run('tests/auto/livekit.mjs', preload);
   run('scripts/test-framework-loading.mjs', [], {}, 300000);
   run('tests/auto/smoke.mjs', preload, { AUTO_PRIVATE: 'true' });
   const source = await readFile(join(root, 'tests/auto/smoke.mjs'), 'utf8');
