@@ -12,6 +12,7 @@ import { attachLangChain, attachLangGraph } from '@/auto/langchain';
 import { attachVercel } from '@/auto/vercel';
 import { attachMastra } from '@/auto/mastra';
 import { attachAgents } from '@/auto/agents';
+import { attachLiveKit } from '@/auto/livekit';
 import type { InstrumentationName } from '@/auto/types';
 import type { Foreign } from '@/auto/patch';
 
@@ -28,6 +29,7 @@ const packages: Record<string, [InstrumentationName, string]> = {
   '@openai/agents': ['openai-agents', '>=0.17.0 <0.18'],
   '@openai/agents-core': ['openai-agents', '>=0.17.0 <0.18'],
   '@openai/agents-openai': ['openai-agents', '>=0.17.0 <0.18'],
+  '@livekit/agents': ['livekit', '>=1.9.0 <2'],
 };
 const packageRequire = createRequire(import.meta.url);
 const seen = new Map<string, boolean>();
@@ -66,6 +68,7 @@ function attach(exports: Foreign, packageName: string, base: string): void {
       attachVercel(exports, packageRequire.resolve('@ai-sdk/otel'));
     else if (name === 'mastra')
       attachMastra(exports, packageRequire.resolve('@mastra/observability'));
+    else if (name === 'livekit') attachLiveKit(exports);
     else attachAgents(exports);
   } catch (error) {
     failed(name, error);
@@ -74,7 +77,7 @@ function attach(exports: Foreign, packageName: string, base: string): void {
 if (!state.auto.registered) {
   const names = Object.keys(packages);
   const pattern =
-    /\/node_modules\/(openai|ai|portkey-ai|@openrouter\/sdk|@anthropic-ai\/sdk|@google\/genai|@langchain\/(?:core|langgraph)|@mastra\/core|@openai\/agents(?:-core|-openai)?)(?=\/)/;
+    /\/node_modules\/(openai|ai|portkey-ai|@openrouter\/sdk|@anthropic-ai\/sdk|@google\/genai|@langchain\/(?:core|langgraph)|@mastra\/core|@openai\/agents(?:-core|-openai)?|@livekit\/agents)(?=\/)/;
   addHook((url, exports) => {
     const path = fileURLToPath(url);
     const match = pattern.exec(path);

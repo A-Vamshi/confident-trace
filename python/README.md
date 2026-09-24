@@ -50,7 +50,7 @@ Version 0.1.0 is the initial release; the API may change before 1.0.0. See the r
   CrewAI, LlamaIndex, Agno and smolagents capture execution structure with
   provider-owned inference spans; see [framework ownership](docs/frameworks.md).
 - **Native framework integration:** Pydantic AI, Strands, Google ADK, Microsoft Agent
-  Framework, AgentCore, OpenAI Agents (requires the tracing bridge package), and
+  Framework, AgentCore, LiveKit Agents, OpenAI Agents (requires the tracing bridge package), and
   Claude Agent SDK (native child-process export). See [setup and native limitations](docs/integrations.md).
 - **Existing OTel spans:** we export spans an SDK/framework or external instrumentor
   already emits through the shared provider. Framework instrumentation must already

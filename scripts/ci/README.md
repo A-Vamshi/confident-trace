@@ -1,6 +1,6 @@
 # Grouped CI
 
-GitHub shows 29 stable rows: 19 Python, 9 TypeScript, and Shared / Consistency.
+GitHub shows 30 stable rows: 20 Python, 9 TypeScript, and Shared / Consistency.
 Only suite IDs expand the Actions matrix. Runtime and dependency combinations
 run sequentially within each row, using fresh environments. Separate rows run
 in parallel and one row's failure does not cancel another.
@@ -27,10 +27,10 @@ The workflows provision all required runtimes. No globally installed SDK is used
 
 ## Coverage ownership
 
-`suites.py` defines Python ownership and the original seven environments:
-base (minimum/latest), native, microsoft, agent-sdks, langchain, crewai and
+`suites.py` defines Python ownership and the eight environments:
+base (minimum/latest), native, microsoft, livekit, agent-sdks, langchain, crewai and
 frameworks (tested/latest), on Python 3.10–3.13. Extras and constraints are
-unchanged. The four provider rows and Core each retain all 56 combinations.
+unchanged. The four provider rows and Core each retain all 64 combinations.
 Each framework row retains its eight combinations in its home environment.
 
 Every Python invocation collects the original full test directory before
@@ -85,7 +85,7 @@ python -m unittest discover -s scripts/ci -p 'test_*.py'
 node --test typescript/scripts/ci-suite.test.mjs
 ```
 
-These validate 29 workflow names, version/profile coverage, ownership,
+These validate 30 workflow names, version/profile coverage, ownership,
 unknown-test rejection, continuation after failure, collection reporting,
 empty-selection failure, expected failures, and missing/skipped/extra TS results.
 Runtime collection inventories provide the complete partition for each actual

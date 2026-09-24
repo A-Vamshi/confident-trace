@@ -4,7 +4,7 @@ import {
   createContextKey,
   ROOT_CONTEXT,
 } from '@opentelemetry/api';
-import type { Context } from '@opentelemetry/api';
+import type { Context, Span } from '@opentelemetry/api';
 import { suppressTracing, isTracingSuppressed } from '@opentelemetry/core';
 import { requestSuppressionKey, traceContextKey } from '@/runtime/state';
 
@@ -15,10 +15,15 @@ export interface RouteScope {
 export interface ProjectRouter {
   acquire(apiKey: string, parent: Context): RouteScope;
   release(route: RouteScope): void;
+  owns(span: Span): boolean;
 }
 let router: ProjectRouter | undefined;
 export function setProjectRouter(value: ProjectRouter): void {
   router = value;
+}
+/** Whether a span was started on the provider that exports to Confident. */
+export function isRoutedSpan(span: Span): boolean {
+  return router?.owns(span) ?? false;
 }
 export function tracingSuppressed(parent = context.active()): boolean {
   return (

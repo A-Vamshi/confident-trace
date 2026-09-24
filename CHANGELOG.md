@@ -109,3 +109,7 @@ compatibility matrix. Backend mapping and metrics/log pipelines are separate wor
 
 - Export only spans with Confident or GenAI data plus their parents; `export_non_ai_spans=True` (Python) / `exportNonAiSpans: true` (TypeScript) exports every span.
 - Python `google_genai` stands down while OpenTelemetry's `GoogleGenAiSdkInstrumentor` is active, so each Gemini call produces one span.
+
+## Unreleased — LiveKit Agents
+
+- Add native LiveKit Agents tracing for Python and TypeScript: LiveKit spans are labelled `LiveKit` and exported, and each model call appears once.

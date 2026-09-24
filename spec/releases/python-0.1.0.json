@@ -80,6 +80,12 @@
         "core 1.17.0 / OpenAI client 1.14.2"
       ]
     },
+    "LiveKit Agents (optional)": {
+      "supported": "Native OTel export and inference recognition; no runtime version gate",
+      "tested": [
+        "1.8.3 with livekit-plugins-openai 1.8.3 and OpenAI 2.54.0"
+      ]
+    },
     "Strands (optional)": {
       "supported": "Native OTel export and inference recognition; no runtime version gate",
       "tested": [
@@ -197,6 +203,11 @@
       "name": "Pydantic AI (native OTel)",
       "surfaces": "Agent runs, tools and streams; native enablement and overlapping model suppression",
       "validation": "Real OpenAI model adapter with mocked HTTP/SSE; sync/async, tools, parentage, errors, cancellation/close, existing settings and explicit providers."
+    },
+    {
+      "name": "LiveKit Agents (native OTel)",
+      "surfaces": "AgentSession voice and text turns, LLM requests, tools and lifecycle spans; overlapping model suppression",
+      "validation": "Real AgentSession with the OpenAI plugin and mocked HTTP/SSE; labels, one span per model call, parentage, unset/configured LiveKit provider and deselection."
     },
     {
       "name": "Strands (native OTel)",

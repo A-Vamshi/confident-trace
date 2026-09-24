@@ -15,6 +15,8 @@ import {
 import type { ExportOptions } from '@/config/types';
 import { createHttpExporter } from '@/exporters/http';
 import { createGrpcExporter } from '@/exporters/grpc';
+import { ATTR_CONFIDENT_SPAN_INTEGRATION } from '@/semconv/generated';
+import { state } from '@/runtime/state';
 
 import { context, ROOT_CONTEXT, trace } from '@opentelemetry/api';
 import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
@@ -104,6 +106,9 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     (scope as Route).leases--;
     this.trim();
   }
+  owns(span: ApiSpan): boolean {
+    return this.spans.has(span);
+  }
   private trim(): void {
     const idle = [...this.routes].filter(
       ([, r]) => !r.active && !r.leases && !r.cleaning,
@@ -130,6 +135,11 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     }
   }
   onStart(span: Span, parent: Context = context.active()): void {
+    const integration = state.integrationScopes.get(
+      span.instrumentationScope?.name ?? '',
+    );
+    if (integration && !isDisabled())
+      span.setAttribute(ATTR_CONFIDENT_SPAN_INTEGRATION, integration);
     ambientOnStart(span, parent);
     if (this.closed || tracingSuppressed(parent)) return;
     let route =

@@ -85,6 +85,21 @@ class OwnedRuntime implements TraceRuntime {
   }
 }
 
+function fanout(processors: SpanProcessor[]): SpanProcessor {
+  return {
+    onStart: (span, parent) =>
+      processors.forEach((p) => p.onStart(span, parent)),
+    onEnding: (span) => processors.forEach((p) => p.onEnding?.(span)),
+    onEnd: (span) => processors.forEach((p) => p.onEnd(span)),
+    forceFlush: async () => {
+      await Promise.all(processors.map((p) => p.forceFlush()));
+    },
+    shutdown: async () => {
+      await Promise.all(processors.map((p) => p.shutdown()));
+    },
+  };
+}
+
 export function init(options: InitOptions = {}): TraceRuntime {
   if (sdkDisabled()) {
     if (runtime?.active) void runtime.shutdown();
@@ -103,9 +118,10 @@ export function init(options: InitOptions = {}): TraceRuntime {
     const resource = defaultResource()
       .merge(detectResources({ detectors: [envDetector] }))
       .merge(resourceFromAttributes(options.resourceAttributes ?? {}));
+    const registered: SpanProcessor[] = [];
     provider = new NodeTracerProvider({
       resource,
-      spanProcessors: [processor],
+      spanProcessors: [processor, fanout(registered)],
     });
     if (!trace.setGlobalTracerProvider(provider)) {
       void provider.shutdown().catch(() => {});
@@ -127,6 +143,10 @@ export function init(options: InitOptions = {}): TraceRuntime {
     );
     runtime = new OwnedRuntime(provider, policy, ownedContext);
     state.runtime = runtime;
+    state.ownedProvider = {
+      tracerProvider: provider,
+      registerSpanProcessor: (added) => registered.push(added),
+    };
     state.policy = policy;
     activate();
     return runtime;

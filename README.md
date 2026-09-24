@@ -64,6 +64,7 @@ hooks. A dash indicates no dedicated integration in that SDK.
 | Microsoft Agent Framework | Native OTel agent, tool, and workflow spans. | — |
 | Pydantic AI | Native OTel agent runs, tools, and streams. | — |
 | Strands | Native OTel agent, model, and tool spans. | — |
+| LiveKit Agents | Native OTel voice session, turn, LLM, tool, and speech spans. | Native OTel voice session, turn, LLM, tool, and speech spans. |
 | Amazon Bedrock AgentCore | Local HTTP `/invocations` tracing through ASGI middleware. | — |
 | Claude Agent SDK | Subprocess OTLP configuration and W3C context propagation; native CLI trace output remains unverified. | — |
 | Vercel AI SDK | — | AI SDK 7 telemetry adapter for generation, streaming, steps, models, and tools. |

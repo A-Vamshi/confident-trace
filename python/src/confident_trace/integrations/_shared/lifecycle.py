@@ -20,12 +20,13 @@ def register_native_inference(
     *,
     attribute=native_ai.OPERATION_NAME,
     values=native_ai.INFERENCE_OPERATIONS,
+    span_names=(),
 ):
     """Recognize a verified native inference scope without patching its SDK."""
     key = scope_name
     if key in _NATIVE_INFERENCE_SCOPES:
         return []
-    owner = (object(), attribute, frozenset(values))
+    owner = (object(), attribute, frozenset(values), frozenset(span_names))
     _NATIVE_INFERENCE_SCOPES[key] = owner
 
     def remove():
@@ -55,7 +56,9 @@ def native_inference_active(rt):
     registration = _NATIVE_INFERENCE_SCOPES.get(scope.name) if scope else None
     if registration is None:
         return False
-    _, attribute, values = registration
+    _, attribute, values, span_names = registration
+    if getattr(current, "name", None) in span_names:
+        return True
     return (getattr(current, "attributes", None) or {}).get(attribute) in values
 
 

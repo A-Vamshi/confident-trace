@@ -71,6 +71,7 @@
     "openai_agents": "OpenAI Agents SDK",
     "litellm": "LiteLLM",
     "openrouter": "OpenRouter",
-    "portkey": "Portkey"
+    "portkey": "Portkey",
+    "livekit": "LiveKit"
   }
 }
