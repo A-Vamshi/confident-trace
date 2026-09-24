@@ -12,13 +12,14 @@ import { attachLangChain, attachLangGraph } from '@/auto/langchain';
 import { attachVercel } from '@/auto/vercel';
 import { attachMastra } from '@/auto/mastra';
 import { attachAgents } from '@/auto/agents';
+import { attachLiveKit } from '@/auto/livekit';
 import type { InstrumentationName } from '@/auto/types';
 import type { Foreign } from '@/auto/patch';
 
 const packages: Record<string, [InstrumentationName, string]> = {
   'portkey-ai': ['portkey', '>=3.1.0 <3.2'],
   '@openrouter/sdk': ['openrouter', '>=1.2.116 <1.3'],
-  openai: ['openai', '>=7.10.0 <8'],
+  openai: ['openai', '>=6.8.1 <7 || >=7.10.0 <8'],
   '@anthropic-ai/sdk': ['anthropic', '>=0.124.0 <0.125'],
   '@google/genai': ['google-genai', '>=2.21.0 <3'],
   ai: ['vercel-ai', '>=7.0.93 <8'],
@@ -28,10 +29,16 @@ const packages: Record<string, [InstrumentationName, string]> = {
   '@openai/agents': ['openai-agents', '>=0.17.0 <0.18'],
   '@openai/agents-core': ['openai-agents', '>=0.17.0 <0.18'],
   '@openai/agents-openai': ['openai-agents', '>=0.17.0 <0.18'],
+  '@livekit/agents': ['livekit', '>=1.9.0 <2'],
 };
 const packageRequire = createRequire(import.meta.url);
 const seen = new Map<string, boolean>();
-function attach(exports: Foreign, packageName: string, base: string): void {
+function attach(
+  exports: Foreign,
+  packageName: string,
+  base: string,
+  modulePath = '',
+): void {
   const entry = packages[packageName];
   if (!entry) return;
   const [name, range] = entry;
@@ -66,6 +73,7 @@ function attach(exports: Foreign, packageName: string, base: string): void {
       attachVercel(exports, packageRequire.resolve('@ai-sdk/otel'));
     else if (name === 'mastra')
       attachMastra(exports, packageRequire.resolve('@mastra/observability'));
+    else if (name === 'livekit') attachLiveKit(exports, modulePath);
     else attachAgents(exports);
   } catch (error) {
     failed(name, error);
@@ -74,12 +82,17 @@ function attach(exports: Foreign, packageName: string, base: string): void {
 if (!state.auto.registered) {
   const names = Object.keys(packages);
   const pattern =
-    /\/node_modules\/(openai|ai|portkey-ai|@openrouter\/sdk|@anthropic-ai\/sdk|@google\/genai|@langchain\/(?:core|langgraph)|@mastra\/core|@openai\/agents(?:-core|-openai)?)(?=\/)/;
+    /\/node_modules\/(openai|ai|portkey-ai|@openrouter\/sdk|@anthropic-ai\/sdk|@google\/genai|@langchain\/(?:core|langgraph)|@mastra\/core|@openai\/agents(?:-core|-openai)?|@livekit\/agents)(?=\/)/;
   addHook((url, exports) => {
     const path = fileURLToPath(url);
     const match = pattern.exec(path);
     if (!match) return;
-    attach(exports, match[1]!, path.slice(0, match.index + match[0].length));
+    attach(
+      exports,
+      match[1]!,
+      path.slice(0, match.index + match[0].length),
+      path,
+    );
   });
   new Hook(names, { internals: true }, (exports, name, base) => {
     if (!base) return exports;
@@ -104,7 +117,7 @@ if (!state.auto.registered) {
               ]),
             ),
           );
-    attach(namespace, packageName, base);
+    attach(namespace, packageName, base, name);
     if (typeof exports === 'function')
       return namespace.default as typeof exports;
     // Preserve identity and non-enumerable __esModule markers for untouched modules.

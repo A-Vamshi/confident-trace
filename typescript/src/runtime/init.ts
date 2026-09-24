@@ -25,7 +25,7 @@ import {
   resourceFromAttributes,
 } from '@opentelemetry/resources';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
+import type { Span, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { isDisabled, sdkDisabled } from '@/config/resolve';
 import type { InitOptions } from '@/config/types';
 import { ContentPolicy } from '@/content/policy';
@@ -85,6 +85,23 @@ class OwnedRuntime implements TraceRuntime {
   }
 }
 
+// onEnding is newer than the minimum supported OTel SDK, which never calls it.
+type EndingProcessor = SpanProcessor & { onEnding?(span: Span): void };
+function fanout(processors: EndingProcessor[]): EndingProcessor {
+  return {
+    onStart: (span, parent) =>
+      processors.forEach((p) => p.onStart(span, parent)),
+    onEnding: (span: Span) => processors.forEach((p) => p.onEnding?.(span)),
+    onEnd: (span) => processors.forEach((p) => p.onEnd(span)),
+    forceFlush: async () => {
+      await Promise.all(processors.map((p) => p.forceFlush()));
+    },
+    shutdown: async () => {
+      await Promise.all(processors.map((p) => p.shutdown()));
+    },
+  };
+}
+
 export function init(options: InitOptions = {}): TraceRuntime {
   if (sdkDisabled()) {
     if (runtime?.active) void runtime.shutdown();
@@ -103,9 +120,10 @@ export function init(options: InitOptions = {}): TraceRuntime {
     const resource = defaultResource()
       .merge(detectResources({ detectors: [envDetector] }))
       .merge(resourceFromAttributes(options.resourceAttributes ?? {}));
+    const registered: EndingProcessor[] = [];
     provider = new NodeTracerProvider({
       resource,
-      spanProcessors: [processor],
+      spanProcessors: [processor, fanout(registered)],
     });
     if (!trace.setGlobalTracerProvider(provider)) {
       void provider.shutdown().catch(() => {});
@@ -127,6 +145,10 @@ export function init(options: InitOptions = {}): TraceRuntime {
     );
     runtime = new OwnedRuntime(provider, policy, ownedContext);
     state.runtime = runtime;
+    state.ownedProvider = {
+      tracerProvider: provider,
+      registerSpanProcessor: (added) => registered.push(added),
+    };
     state.policy = policy;
     activate();
     return runtime;

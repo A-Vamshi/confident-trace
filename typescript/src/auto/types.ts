@@ -9,6 +9,7 @@ export const instrumentationNames = [
   'langgraph',
   'mastra',
   'openai-agents',
+  'livekit',
 ] as const;
 export type InstrumentationName = (typeof instrumentationNames)[number];
 export type InstrumentationState =

@@ -22,6 +22,10 @@ test('shared tests keep one explicit owner', () => {
     owner('tests/integrations/langchain.test.ts', 'a graph test'),
     'langchain',
   );
+  assert.equal(
+    owner('tests/integrations/livekit.test.ts', 'a LiveKit test'),
+    'core',
+  );
   assert.throws(
     () => owner('tests/integrations/providers.test.ts', 'new unmapped test'),
     /Unassigned/,

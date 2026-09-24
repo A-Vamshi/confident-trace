@@ -15,7 +15,7 @@ from suites import HOME, PROFILES, PYTHON, TYPESCRIPT, combinations, python_owne
 
 
 class GroupingTests(unittest.TestCase):
-    def test_workflows_have_exactly_29_stable_names(self):
+    def test_workflows_have_exactly_30_stable_names(self):
         import yaml
 
         shared = yaml.safe_load((ROOT / ".github/workflows/shared.yml").read_text())
@@ -34,7 +34,7 @@ class GroupingTests(unittest.TestCase):
                 {row["suite"]: row["name"] for row in matrix["include"]}, suites
             )
             total += len(matrix["include"])
-        self.assertEqual(total, 29)
+        self.assertEqual(total, 30)
 
     def test_all_original_compatibility_pairs_have_one_scheduled_owner(self):
         examples = [
@@ -46,7 +46,14 @@ class GroupingTests(unittest.TestCase):
             ],
             *[
                 f"integrations/{s}/test_framework.py::test_example"
-                for s in ("google_adk", "agentcore", "microsoft", "langchain", "crewai")
+                for s in (
+                    "google_adk",
+                    "agentcore",
+                    "microsoft",
+                    "livekit",
+                    "langchain",
+                    "crewai",
+                )
             ],
             "integrations/native_agents/test_native_agents.py::test_native_agents[pydantic_ai-pydantic-ai-slim]",
             "integrations/native_agents/test_native_agents.py::test_native_agents[strands-strands-agents]",
@@ -73,11 +80,11 @@ class GroupingTests(unittest.TestCase):
             for test in examples:
                 owner = python_owner("python/tests/" + test, profile)
                 self.assertIn((runtime, profile, deps), combinations("python", owner))
-        self.assertEqual(len(combinations("python", "core")), 56)
-        self.assertEqual(len(combinations("python", "interop")), 57)
+        self.assertEqual(len(combinations("python", "core")), 64)
+        self.assertEqual(len(combinations("python", "interop")), 65)
         for suite in HOME:
             self.assertEqual(len(combinations("python", suite)), 8)
-        self.assertEqual(len(PROFILES), 7)
+        self.assertEqual(len(PROFILES), 8)
         self.assertEqual(len(combinations("typescript", "core")), 4)
 
     def test_pytest_python_root_relative_node_ids(self):

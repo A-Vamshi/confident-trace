@@ -26,6 +26,17 @@ try {
   run('tests/auto/smoke.mjs', preload);
   run('tests/auto/dynamic.mjs', preload);
   run('tests/auto/frameworks.mjs', preload);
+  run('tests/auto/livekit.mjs', preload);
+  for (const mode of ['esm', 'cjs'])
+    for (const provider of ['shared', 'separate'])
+      run(
+        `tests/auto/livekit-plugin.${mode === 'esm' ? 'mjs' : 'cjs'}`,
+        preload,
+        {
+          LIVEKIT_MODULE_MODE: mode,
+          LIVEKIT_PROVIDER: provider,
+        },
+      );
   run('scripts/test-framework-loading.mjs', [], {}, 300000);
   run('tests/auto/smoke.mjs', preload, { AUTO_PRIVATE: 'true' });
   const source = await readFile(join(root, 'tests/auto/smoke.mjs'), 'utf8');

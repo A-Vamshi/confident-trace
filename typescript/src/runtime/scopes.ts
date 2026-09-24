@@ -4,9 +4,9 @@ import {
   createContextKey,
   ROOT_CONTEXT,
 } from '@opentelemetry/api';
-import type { Context } from '@opentelemetry/api';
+import type { Context, Span } from '@opentelemetry/api';
 import { suppressTracing, isTracingSuppressed } from '@opentelemetry/core';
-import { requestSuppressionKey, traceContextKey } from '@/runtime/state';
+import { requestSuppressionKey, state, traceContextKey } from '@/runtime/state';
 
 export const projectKey = createContextKey('confident-trace.project-route');
 export interface RouteScope {
@@ -15,10 +15,14 @@ export interface RouteScope {
 export interface ProjectRouter {
   acquire(apiKey: string, parent: Context): RouteScope;
   release(route: RouteScope): void;
+  owns(span: Span): boolean;
 }
-let router: ProjectRouter | undefined;
 export function setProjectRouter(value: ProjectRouter): void {
-  router = value;
+  state.router = value;
+}
+/** Whether a span was started on the provider that exports to Confident. */
+export function isRoutedSpan(span: Span): boolean {
+  return state.router?.owns(span) ?? false;
 }
 export function tracingSuppressed(parent = context.active()): boolean {
   return (
@@ -55,9 +59,9 @@ export function projectContext<T>(
     throw new TypeError('apiKey must be a nonempty string');
   if (process.env.OTEL_SDK_DISABLED?.toLowerCase() === 'true')
     return callback();
-  if (!router)
+  if (!state.router)
     throw new Error('Initialize Confident Trace before selecting a project');
-  const owner = router;
+  const owner = state.router;
   const route = owner.acquire(options.apiKey, context.active());
   let released = false;
   const release = () => {

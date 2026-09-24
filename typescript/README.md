@@ -96,7 +96,7 @@ init({ instrumentations: [] });
 ```
 
 Names are `openai`, `anthropic`, `google-genai`, `vercel-ai`, `langchain`,
-`langgraph`, `mastra`, and `openai-agents`. Call `init()` once; subsequent calls
+`langgraph`, `mastra`, `openai-agents`, and `livekit`. Call `init()` once; subsequent calls
 return the existing runtime. `tracing.getInstrumentationStatus()` reports whether
 the hook registered and each integration's attachment state. `not observed` means
 the corresponding SDK has not been observed, not that it is uninstalled.
@@ -668,6 +668,25 @@ the OTel provider. Complete/abort streams before shutting down. Content controls
 
 See the [OpenAI Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
 for the framework.
+
+## LiveKit Agents
+
+Call `init()` at the top of the agent file and start the worker with
+`node --import confident-trace/register agent.js start`. Each call runs in a job
+process that inherits the preload and re-imports the file, so every call is traced.
+Spans are flushed after session finalization and all shutdown callbacks settle,
+with a five-second budget. This also covers jobs that fail before connecting.
+
+Each call becomes one trace of LiveKit's native spans (session, turns, LLM
+requests, tools, speech timing), labelled `LiveKit`. LiveKit's LLM span records
+each model call, so a provider span inside it is skipped and cost is counted once.
+LiveKit's OpenAI 6 plugin client is supported alongside OpenAI 7. If LiveKit's tracer is unset, `init()` points it at the
+Confident provider and keeps LiveKit Cloud export working. A provider set with
+`telemetry.setTracerProvider()` is left alone. `captureContent` and redaction apply
+only to Confident spans; set `LIVEKIT_TELEMETRY_ALLOW_PII=0` to strip LiveKit's
+conversation content.
+The transcript and spoken text stay in LiveKit's `lk.*` attributes, which the
+backend does not display yet.
 
 ## Span types
 
