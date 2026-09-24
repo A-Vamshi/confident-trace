@@ -16,6 +16,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from .. import _attributes as confident
 from .._semconv import native
+from .ancestry import Ancestry, span_key
 
 log = logging.getLogger(confident.SCOPE_NAME)
 
@@ -124,8 +125,8 @@ class RoutingProcessor:
 
     Only idle routes are bounded. Active requests and queued spans cannot be
     evicted. The standard batch processor retains its normal bounded queue.
-    Unless export_non_ai_spans is set, only AI spans export, plus open local
-    ancestors of exported spans when those ancestors end.
+    Unless export_non_ai_spans is set, only AI spans export, plus tracked local
+    ancestors, including ended ancestors with outstanding descendants.
     """
 
     def __init__(
@@ -137,8 +138,7 @@ class RoutingProcessor:
         self.export_non_ai_spans = export_non_ai_spans
         self.routes = OrderedDict()
         self.spans = {}
-        self.parents = {}
-        self.retained = set()
+        self.ancestry = Ancestry(self._publish)
         self.retirements = set()
         self.lock = threading.RLock()
         self.closed = False
@@ -217,41 +217,48 @@ class RoutingProcessor:
                     route.leases -= 1
                 except RuntimeError:
                     route = None  # Never send a failed project route to the default.
-            self.spans[span.context.span_id] = route
+            key = span_key(span.context)
+            self.spans[key] = route
             if route:
                 route.active += 1
                 if not self.export_non_ai_spans:
                     parent = span.parent
-                    self.parents[span.context.span_id] = (
-                        None if parent is None or parent.is_remote else parent.span_id
+                    self.ancestry.start(
+                        key,
+                        None
+                        if parent is None or parent.is_remote
+                        else span_key(parent),
+                        route,
+                        is_ai_span(span),
                     )
 
-    def on_end(self, span):
-        keep = self.export_non_ai_spans or is_ai_span(span)
+    def owns_span(self, span):
+        """Proof of provider ownership from our public on_start callback."""
         with self.lock:
-            span_id = span.context.span_id
-            route = self.spans.pop(span_id, None)
-            parent = self.parents.pop(span_id, None)
-            if span_id in self.retained:
-                self.retained.discard(span_id)
-                keep = True
+            return span_key(span.get_span_context()) in self.spans
+
+    def _publish(self, route, span):
+        route.generation += 1
+        route.dirty = True
+        route.processor.on_end(span)
+
+    def on_end(self, span):
+        with self.lock:
+            key = span_key(span.context)
+            route = self.spans.pop(key, None)
             if route is None or self.closed:
                 return
-            route.active -= 1
-            if not keep:
-                return
-            while parent in self.parents and parent not in self.retained:
-                self.retained.add(parent)
-                parent = self.parents[parent]
-            route.generation += 1
-            route.dirty = True
-            route.processor.on_end(span)
+            if self.export_non_ai_spans:
+                route.active -= 1
+                self._publish(route, span)
+            else:
+                self.ancestry.end(key, span, is_ai_span(span))
 
     def force_flush(self, timeout_millis=30000):
         deadline = time.monotonic() + timeout_millis / 1000
         with self.lock:
+            result = self.ancestry.flush_pending(deadline)
             routes = [self.default, *self.routes.values()]
-        result = True
         for route in routes:
             with self.lock:
                 generation = route.generation
@@ -271,12 +278,13 @@ class RoutingProcessor:
         with self.lock:
             if self.closed:
                 return
+            self.ancestry.flush_pending()
+            self.ancestry.clear()
             self.closed = True
             routes = [self.default, *self.routes.values()]
             self.routes.clear()
             self.spans.clear()
-            self.parents.clear()
-            self.retained.clear()
+
             retirements = list(self.retirements)
         for route in routes:
             try:

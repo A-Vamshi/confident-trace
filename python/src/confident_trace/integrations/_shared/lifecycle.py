@@ -36,13 +36,9 @@ def register_native_inference(
 
 
 def same_provider(span, rt):
-    # OTel exposes no public span-to-provider link. Compare the SDK processor
-    # identity conservatively: native settings can select a non-global provider.
-    # If a future SDK changes these internals, keep the provider wrapper active.
-    processor = getattr(span, "_span_processor", None)
-    return processor is not None and processor is getattr(
-        rt.provider, "_active_span_processor", None
-    )
+    processor = getattr(rt, "processor", None)
+    router = getattr(processor, "delegate", None)
+    return router is not None and router.owns_span(span)
 
 
 def native_inference_active(rt):
@@ -69,6 +65,7 @@ def begin_call(
     request,
     *,
     integration: confident.Integration,
+    start_time=None,
 ):
     from .gateways import gateway_name, matches_endpoint
 
@@ -103,6 +100,7 @@ def begin_call(
         kind=SpanKind.CLIENT,
         attributes=attrs,
         integration=integration,
+        start_time=start_time,
     )
     op.ctx = context.set_value(_SUPPRESS, True, op.ctx)
     safe(request, op, params)

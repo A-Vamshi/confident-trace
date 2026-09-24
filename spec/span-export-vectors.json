@@ -66,14 +66,14 @@
        {"name": "root", "scope": "web"},
        {"name": "model", "scope": "provider", "parent": "root", "attributes": {"gen_ai.operation.name": "chat"}}
      ],
-     "end": ["root", "model"], "exported": ["model"]},
-    {"name": "ended-intermediate-stops-retention",
+     "end": ["root", "model"], "exported": ["root", "model"]},
+    {"name": "ended-intermediate-preserves-retention",
      "spans": [
        {"name": "root", "scope": "web"},
        {"name": "middle", "scope": "web", "parent": "root"},
        {"name": "model", "scope": "provider", "parent": "middle", "attributes": {"gen_ai.operation.name": "chat"}}
      ],
-     "end": ["middle", "model", "root"], "exported": ["model"]},
+     "end": ["middle", "model", "root"], "exported": ["middle", "model", "root"]},
     {"name": "remote-parent",
      "spans": [
        {"name": "model", "scope": "provider", "parent": "@remote", "attributes": {"gen_ai.operation.name": "chat"}},

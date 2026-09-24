@@ -305,6 +305,7 @@ class Operation:
         span_fields=None,
         parent=None,
         links=(),
+        start_time=None,
     ):
         rt = _runtime.current()
         if not rt or not rt.active or _runtime.disabled():
@@ -329,6 +330,7 @@ class Operation:
                 kind=kind,
                 attributes=attributes,
                 links=links,
+                start_time=start_time,
             )
             or otel.INVALID_SPAN
         )

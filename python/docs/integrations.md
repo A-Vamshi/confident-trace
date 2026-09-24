@@ -50,7 +50,14 @@ attributes; a source-specific mapping must exist in the backend for rich display
 Use `init(instrumentations=())` when external instrumentation already covers
 provider calls, or select only the uncovered providers. Existing wrapt wrappers
 are skipped, but this is not universal duplicate detection across frameworks.
-`google_genai` stands down while OpenTelemetry's Google GenAI instrumentation is active.
+`google_genai` stands down only when a native Google span is observed by our
+processor. When the external wrapper runs inside ours, observation is scoped to
+the call (and stream iteration); our fallback span is created only if no native
+span reaches this provider, using the call's original start time and parent.
+This also preserves fallback telemetry when Google's instrumentor uses a separate
+provider. Observing ownership uses public span callbacks, not private OTel fields.
+In this fallback case, spans created by other instrumentation before the fallback
+exists retain their original parent; they are not re-parented beneath it.
 Third-party capture/redaction settings remain owned by that instrumentation.
 
 The [generated release matrix](compatibility.md) pins only what this package emits. Native and
