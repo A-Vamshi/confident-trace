@@ -250,11 +250,15 @@ def test_bounded_media_messages_stay_schema_valid():
         )
 
 
-def test_media_outside_a_message_shape_is_kept_whole():
+def test_media_outside_a_message_shape_carries_no_bytes():
     encoded = ContentPolicy().encode(
         {"page": Media.from_bytes(PNG * 4000, "image/png")}
     )
-    assert b64decode(json.loads(encoded)["page"]["content"]) == PNG * 4000
+    assert json.loads(encoded)["page"] == {
+        "type": "blob",
+        "mime_type": "image/png",
+        "content_omitted": True,
+    }
 
 
 @pytest.mark.parametrize(
