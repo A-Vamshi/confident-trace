@@ -4,10 +4,41 @@ from urllib.parse import urlsplit
 
 from ... import _attributes as confident
 from ..._core import runtime as _runtime
+from ..._core.media import Media
 from ..._core.safety import safe
 from ..._core.spans import content
 from ..._semconv import genai_v1_37_0 as ai
 from .._shared.extraction import arguments, get, sequence, string
+
+_MEDIA_KINDS = (
+    "image_url",
+    "input_image",
+    "input_audio",
+    "audio",
+    "file",
+    "input_file",
+)
+_MEDIA_SOURCES = ("url", "image_url", "file_data", "file_url")
+_AUDIO_MIME_TYPES = {"wav": "audio/wav", "mp3": "audio/mpeg"}
+
+
+def media(block, kind):
+    """Read one media block; Chat Completions nests it, Responses flattens it."""
+    nested = get(block, kind)
+    if type(nested) is str:
+        return Media.parse(nested) or Media()
+    source = block if nested is None else nested
+    mime = string(get(source, "mime_type")) or _AUDIO_MIME_TYPES.get(
+        string(get(source, "format"))
+    )
+    data = string(get(source, "data"))
+    if data is not None:
+        return Media.from_base64(data, mime) or Media(mime_type=mime)
+    for key in _MEDIA_SOURCES:
+        value = string(get(source, key))
+        if value is not None:
+            return Media.parse(value, mime) or Media(mime_type=mime)
+    return Media(mime_type=mime)
 
 
 def parts(value, depth=0):
@@ -43,15 +74,8 @@ def parts(value, depth=0):
                     else get(block, "content", get(block, "output")),
                 }
             )
-        elif kind in (
-            "image_url",
-            "input_image",
-            "input_audio",
-            "audio",
-            "file",
-            "input_file",
-        ):
-            result.append({"type": kind, "content_omitted": True})
+        elif kind in _MEDIA_KINDS:
+            result.append(media(block, kind))
         else:
             result.append({"type": "unsupported", "content_omitted": True})
     return result

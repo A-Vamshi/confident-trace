@@ -40,7 +40,7 @@ class ContentPolicy:
                 if type(item) is str:
                     return item[: self.max_bytes]
                 if type(item) is Media:
-                    return item.to_part(self.max_media_bytes)
+                    return item.to_part(self.max_media_bytes if shape else 0)
                 if type(item) in (list, tuple):
                     return [
                         clean(v, depth + 1) for v in islice(item, max(0, remaining[0]))
