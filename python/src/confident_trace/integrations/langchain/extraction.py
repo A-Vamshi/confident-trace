@@ -6,12 +6,37 @@ from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 from langchain_core.prompt_values import ChatPromptValue, StringPromptValue
 
+from ..._core.media import Media
 from ..._core.spans import content
 from ..._semconv import genai_v1_37_0 as ai
+
+_MEDIA_BLOCKS = {"image", "image_url", "file", "audio", "video"}
 
 
 def mapping(value):
     return value if type(value) is dict else {}
+
+
+def media(block):
+    if block.get("type") not in _MEDIA_BLOCKS:
+        return None
+    source = block.get("source")
+    if type(source) is dict:  # Provider payload passed through untouched.
+        block = {**source, "mime_type": source.get("media_type"), **block}
+
+    mime = block.get("mime_type") or block.get("mimeType")
+    data = block.get("base64") or block.get("data")
+    if type(data) is str and type(mime) is str:
+        return Media.from_base64(data, mime)
+
+    url = block.get("url")
+    if url is None:
+        nested = block.get("image_url")
+        url = nested.get("url") if type(nested) is dict else nested
+    if type(url) is str:
+        return Media.parse(url, mime)
+
+    return Media(mime_type=mime if type(mime) is str else None)
 
 
 def name(serialized, options):
@@ -36,12 +61,14 @@ def messages(values, *, output=False):
                 for block in text[:128]:
                     if type(block) is str:
                         parts.append({"type": "text", "content": block})
-                    elif (
-                        type(block) is dict
-                        and block.get("type") == "text"
-                        and type(block.get("text")) is str
-                    ):
+                    elif type(block) is not dict:
+                        continue
+                    elif block.get("type") == "text" and type(block.get("text")) is str:
                         parts.append({"type": "text", "content": block["text"]})
+                    else:
+                        item = media(block)
+                        if item is not None:
+                            parts.append(item)
             for call in data.get("tool_calls", [])[:128]:
                 if type(call.get("name")) is str:
                     part = {

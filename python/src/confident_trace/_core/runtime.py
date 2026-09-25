@@ -139,6 +139,7 @@ def init(
     export_non_ai_spans=False,
     capture_content=True,
     max_content_bytes=16384,
+    max_media_bytes=1048576,
     redact=None,
     litellm_proxy_urls=(),
     openrouter_proxy_urls=(),
@@ -165,6 +166,8 @@ def init(
         try:
             if max_content_bytes < 64:
                 raise ValueError("max_content_bytes must be at least 64")
+            if max_media_bytes < 0:
+                raise ValueError("max_media_bytes must not be negative")
             provider = (
                 tracer_provider
                 if tracer_provider is not None
@@ -266,7 +269,9 @@ def init(
             provider.add_span_processor(processor)
             runtime = Runtime(
                 provider,
-                ContentPolicy(capture_content, max_content_bytes, redact),
+                ContentPolicy(
+                    capture_content, max_content_bytes, redact, max_media_bytes
+                ),
                 processor,
                 otlp_environment=otlp_environment,
             )
