@@ -18,7 +18,7 @@ from opentelemetry.util.re import parse_env_headers
 from .. import _attributes as confident
 from .._semconv.genai_v1_37_0 import SCHEMA_URL
 from .._semconv.genai_v1_37_0 import SEMCONV_VERSION as SEMCONV_VERSION
-from .batching import SizeLimitedExporter
+from .batching import BoundedSpanExporter
 from .content import ContentPolicy
 from .otlp import child_environment
 from .safety import safe
@@ -243,7 +243,7 @@ def init(
                         }[compression]
                 # Unspecified TLS, compression, timeout and endpoint settings are
                 # resolved by the standard exporter, including signal precedence.
-                exporter = SizeLimitedExporter(OTLPSpanExporter(**kwargs))
+                exporter = BoundedSpanExporter(OTLPSpanExporter(**kwargs))
                 otlp_environment = safe(
                     child_environment, selected, kwargs, compression=compression
                 )
@@ -257,7 +257,7 @@ def init(
                                 "x-confident-api-key": project_key,
                             },
                         }
-                        return SizeLimitedExporter(OTLPSpanExporter(**project_kwargs))
+                        return BoundedSpanExporter(OTLPSpanExporter(**project_kwargs))
 
             processor = OwnedProcessor(
                 RoutingProcessor(

@@ -72,7 +72,7 @@ export function batches(
  * large is dropped outright — taking every span batched alongside it, media or
  * not. Splitting first keeps one large span from costing the rest.
  */
-export class SizeLimitedSpanExporter implements SpanExporter {
+export class BoundedSpanExporter implements SpanExporter {
   constructor(
     private readonly exporter: SpanExporter,
     private readonly maxBytes: number = MAX_EXPORT_BYTES,

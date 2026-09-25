@@ -45,7 +45,7 @@ def batches(spans, max_bytes):
         yield current
 
 
-class SizeLimitedExporter(SpanExporter):
+class BoundedSpanExporter(SpanExporter):
     """Export in chunks the collector will accept, rather than one oversized body.
 
     The OTLP exporter retries only timeouts and 5xx, so a body rejected as too

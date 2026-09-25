@@ -1,5 +1,5 @@
 import { Ancestry, spanKey } from '@/runtime/ancestry';
-import { SizeLimitedSpanExporter } from '@/exporters/size-limited';
+import { BoundedSpanExporter } from '@/exporters/bounded';
 import { ambientOnStart } from '@/spans/index';
 import { diag } from '@opentelemetry/api';
 import type { Context, Span as ApiSpan } from '@opentelemetry/api';
@@ -236,7 +236,7 @@ export function createSpanProcessor(
     if (apiKey !== undefined) resolved.headers['x-confident-api-key'] = apiKey;
     // Only exporters we construct are wrapped; a caller's exporter keeps
     // whatever batching its own destination expects.
-    return new SizeLimitedSpanExporter(
+    return new BoundedSpanExporter(
       resolved.protocol === 'grpc'
         ? createGrpcExporter(resolved)
         : createHttpExporter(resolved),
