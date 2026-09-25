@@ -7,6 +7,7 @@ import type { ContentOptions } from '@/content/types';
 import { state, suppress, patched, automaticOriginals } from '@/runtime/state';
 import { VERSION } from '@/runtime/version';
 import { Capture, get } from '@/integrations/extract';
+import { liveKitOwnsCall } from '@/integrations/livekit';
 import type { Provider } from '@/integrations/extract';
 import * as S from '@/semconv/generated';
 
@@ -61,6 +62,7 @@ export function instrument(
         if (
           isDisabled() ||
           context.active().getValue(suppress) ||
+          liveKitOwnsCall() ||
           (state.runtime && !state.runtime.active && !options.tracer)
         )
           return original.apply(this, args);

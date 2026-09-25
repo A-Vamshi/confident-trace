@@ -1,6 +1,9 @@
 import { createContextKey } from '@opentelemetry/api';
+import type { TracerProvider } from '@opentelemetry/api';
+import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import type { ContentPolicy } from '@/content/policy';
 import type { TraceRuntime } from '@/runtime/types';
+import type { ProjectRouter } from '@/runtime/scopes';
 import type { InitOptions } from '@/config/types';
 import type { InstrumentationName, InstrumentationState } from '@/auto/types';
 import { instrumentationNames } from '@/auto/types';
@@ -25,8 +28,17 @@ interface AutomaticState {
 export const state: {
   runtime?: TraceRuntime;
   policy?: ContentPolicy;
+  /** init()'s provider; frameworks can add processors after construction. */
+  ownedProvider?: {
+    tracerProvider: TracerProvider;
+    registerSpanProcessor(processor: SpanProcessor): void;
+  };
+  router?: ProjectRouter;
+  /** Native framework scopes whose spans receive an integration label. */
+  integrationScopes: Map<string, string>;
   auto: AutomaticState;
 } = {
+  integrationScopes: new Map(),
   auto: {
     registered: false,
     selected: new Set(instrumentationNames),

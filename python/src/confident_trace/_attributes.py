@@ -59,6 +59,7 @@ class Integration(str, Enum):
     MICROSOFT_AGENT_FRAMEWORK = "Microsoft Agent Framework"
     AGNO = "Agno"
     SMOLAGENTS = "Smolagents"
+    LIVEKIT = "LiveKit"
 
 
 SPAN_INPUT: Final = "confident.span.input"

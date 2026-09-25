@@ -28,6 +28,8 @@ jobs:
             name: "Pydantic AI"
           - suite: microsoft
             name: "Microsoft Agent Framework"
+          - suite: livekit
+            name: "LiveKit"
           - suite: openai-agents
             name: "OpenAI Agents"
           - suite: claude-agent

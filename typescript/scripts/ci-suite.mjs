@@ -16,6 +16,7 @@ export function owner(file, name) {
   )
     return 'openai';
   if (file === 'tests/integrations/langchain.test.ts') return 'langchain';
+  if (file === 'tests/integrations/livekit.test.ts') return 'core';
   if (file === 'tests/integrations/openai-agents.test.ts')
     return 'openai-agents';
   const key = name.startsWith('uses real AI SDK generation with ')

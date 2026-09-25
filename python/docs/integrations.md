@@ -36,8 +36,8 @@ requests and requested tool calls, not the execution of arbitrary tool functions
 
 The source must already have instrumentation enabled and emit through the shared
 SDK TracerProvider (or explicitly use the provider passed to `init`). `init()`
-enables Pydantic AI and Microsoft Agent Framework as described below. Strands and
-Google ADK already emit native spans. Other frameworks must be enabled by the
+enables Pydantic AI and Microsoft Agent Framework as described below. Strands,
+Google ADK and LiveKit Agents already emit native spans. Other frameworks must be enabled by the
 application. Spans from an unrelated provider are not collected automatically.
 
 We preserve the source's attributes, events, and schema URL. Spans without GenAI
@@ -355,6 +355,38 @@ Pydantic's cancellation/early-close paths are checked for complete span closure.
 Native API references: [Pydantic AI instrumentation](https://pydantic.dev/docs/ai/integrations/logfire/)
 and [Strands tracing](https://strandsagents.com/docs/user-guide/observability-evaluation/traces/).
 
+## LiveKit Agents (native OTel)
+
+Call `init()` at the top of the agent file, before `cli.run_app(...)`. LiveKit
+runs each call in its own process that re-imports this file, so every call is
+traced. Calling `init()` inside the entrypoint misses the call's root span.
+Confident flushes after LiveKit finishes job cleanup and closes its root span,
+with a five-second budget; failed exports do not stop worker termination.
+
+```python
+import confident_trace as ct
+from livekit.agents import AgentServer, cli
+
+ct.init()
+server = AgentServer()
+
+@server.rtc_session()
+async def entrypoint(ctx): ...
+
+if __name__ == "__main__":
+    cli.run_app(server)
+```
+
+Each call becomes one trace: session, user and agent turns, LLM requests, tool
+calls, speaking, end-of-turn and text-to-speech timing, and lifecycle spans, all labelled
+`LiveKit`. LiveKit's LLM span records each model call, so the provider span is
+skipped and cost is counted once. If LiveKit's tracer is unset, it is pointed at
+our provider, which also keeps LiveKit Cloud observability working. A provider
+set with `livekit.agents.telemetry.set_tracer_provider()` is left alone.
+`capture_content` and the redactor apply only to Confident spans; set
+`LIVEKIT_TELEMETRY_ALLOW_PII=0` to strip LiveKit's conversation content.
+The transcript and spoken text stay in LiveKit's `lk.*` attributes, which the
+backend does not display yet. Tests use livekit-agents 1.8.3.
 
 ## OpenAI Agents SDK
 

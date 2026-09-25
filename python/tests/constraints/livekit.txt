@@ -1,0 +1,4 @@
+# Tested framework versions, not package runtime restrictions.
+livekit-agents==1.8.3
+livekit-plugins-openai==1.8.3
+openai==2.54.0

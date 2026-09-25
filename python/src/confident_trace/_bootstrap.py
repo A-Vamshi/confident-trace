@@ -41,6 +41,7 @@ def init(
         "claude_agent_sdk",
         "pydantic_ai",
         "strands",
+        "livekit",
         "microsoft_agent_framework",
         "litellm",
         "openrouter",
