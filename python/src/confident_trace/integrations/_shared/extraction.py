@@ -4,6 +4,22 @@ import json
 from enum import Enum
 from itertools import islice
 
+from ..._core.media import Media
+
+_MIME_KEYS = ("mime_type", "mimeType", "media_type")
+_DATA_KEYS = ("data", "base64")
+_REFERENCE_KEYS = ("url", "image_url", "file_data", "file_url", "uri", "file_uri")
+_MIME_BY_FORMAT = {
+    "gif": "image/gif",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "mp3": "audio/mpeg",
+    "pdf": "application/pdf",
+    "png": "image/png",
+    "wav": "audio/wav",
+    "webp": "image/webp",
+}
+
 
 def get(value, key, default=None):
     if type(value) is dict:
@@ -37,3 +53,31 @@ def arguments(value):
         except (ValueError, RecursionError):
             pass  # Partial streaming JSON stays a string.
     return value
+
+
+def field(source, keys):
+    for key in keys:
+        value = string(get(source, key))
+        if value is not None:
+            return value
+    return None
+
+
+def media(block):
+    # Convert one provider media block into Media object.
+    source = block
+    for key in (string(get(block, "type")), "source"):
+        value = get(block, key) if key else None
+        if type(value) is str:
+            return Media.parse(value) or Media()
+        if value is not None:
+            source = value
+            break
+    mime = field(source, _MIME_KEYS) or _MIME_BY_FORMAT.get(field(source, ("format",)))
+    data = field(source, _DATA_KEYS)
+    if data is not None:
+        return Media.from_base64(data, mime) or Media(mime_type=mime)
+    reference = field(source, _REFERENCE_KEYS)
+    if reference is not None:
+        return Media.parse(reference, mime) or Media(mime_type=mime)
+    return Media(mime_type=mime)
