@@ -63,8 +63,6 @@ def _decoded_length(encoded):
 
 
 def supported_media(mime_type):
-    # Bytes the consumer cannot keep are discarded on arrival, so shipping them
-    # buys nothing and costs the whole payload in bandwidth and buffer space.
     return type(mime_type) is str and (
         mime_type.startswith("image/") or mime_type in _PDF_MIME_TYPES
     )

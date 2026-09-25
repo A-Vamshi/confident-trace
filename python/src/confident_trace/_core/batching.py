@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-# The Confident collector rejects bodies over 32 MiB, and a rejected body is a
-# 413, which the OTLP exporter does not retry. Leave room for protobuf framing
-# and the resource and scope repeated on every request.
 MAX_EXPORT_BYTES = 24 * 1024 * 1024
-# Identifiers, timestamps, status and the span's share of the enclosing message.
 SPAN_OVERHEAD = 1024
 
 
@@ -21,11 +17,6 @@ def value_size(value):
 
 
 def span_size(span):
-    """Approximate the bytes this span contributes to an OTLP request body.
-
-    Attributes dominate, because that is where media payloads live. Precision
-    below that does not change which spans end up batched together.
-    """
     total = SPAN_OVERHEAD + len(span.name or "")
     for key, value in (span.attributes or {}).items():
         total += len(key) + value_size(value)
