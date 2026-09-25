@@ -1,6 +1,7 @@
 import { types } from 'node:util';
 import { normalizeFrameworkOutput } from '@/content/normalize';
 import { Media } from '@/content/media';
+import type { MediaPart } from '@/content/media';
 import type { ContentOptions } from '@/content/types';
 import * as S from '@/semconv/generated';
 
@@ -15,6 +16,37 @@ const SHAPES: Record<string, string> = {
 /** The message shape an attribute carries, if the consumer reads media from it. */
 export function messageShape(key: string): string | undefined {
   return SHAPES[key];
+}
+
+/** One attribute's media allowance, spent as each part is built.
+ *
+ * Two limits apply at once: no single payload may exceed `perItem`, and the
+ * attribute as a whole may not exceed `perAttribute`. The second is what keeps
+ * one span shippable on its own, since a span too large for the collector
+ * cannot be split into smaller ones.
+ */
+export class MediaBudget {
+  private remaining: number;
+
+  constructor(
+    private readonly perItem: number,
+    perAttribute: number,
+  ) {
+    this.remaining = perAttribute;
+  }
+
+  /** A budget that admits nothing, for content read back without media. */
+  static spent(): MediaBudget {
+    return new MediaBudget(0, 0);
+  }
+
+  part(media: Media): MediaPart {
+    // Both limits count decoded bytes, the same unit `toPart` checks; base64
+    // inflates the wire by a third that the defaults allow for.
+    const part = media.toPart(Math.min(this.perItem, this.remaining));
+    if ('content' in part) this.remaining -= media.byteSize() ?? 0;
+    return part;
+  }
 }
 
 function mediaLength(value: unknown, depth = 0): number {
@@ -38,22 +70,58 @@ function mediaLength(value: unknown, depth = 0): number {
 type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
+// A span carries one allowance across every attribute it writes. The span is
+// the unit the collector accepts or rejects, and one too large to send cannot
+// be split, so counting per attribute would let three of them add up past the
+// limit. Weak keys mean an ended span takes its budget with it.
+const spanBudgets = new WeakMap<object, MediaBudget>();
+
+/** The budget this span shares with every other attribute it writes.
+ *
+ * `owner` is any object that lives exactly as long as the span's writes do:
+ * the span itself, or the attribute bag an integration fills before the span
+ * exists.
+ */
+export function spanBudget(
+  owner: object,
+  policy: ContentPolicy,
+  shape?: string,
+): MediaBudget {
+  if (!shape) return MediaBudget.spent();
+  let budget = spanBudgets.get(owner);
+  if (budget === undefined) {
+    budget = policy.budget(shape);
+    spanBudgets.set(owner, budget);
+  }
+  return budget;
+}
+
 export class ContentPolicy {
   readonly enabled: boolean;
   readonly maxBytes: number;
   readonly maxMediaBytes: number;
+  readonly maxMediaTotalBytes: number;
   private readonly redact: ContentOptions['redact'];
 
   constructor(options: ContentOptions = {}) {
     this.enabled = options.captureContent ?? true;
     this.maxBytes = options.maxContentBytes ?? 16384;
-    this.maxMediaBytes = options.maxMediaBytes ?? 1048576;
+    // Five MiB is the smallest per-image limit the major providers set, so
+    // anything a model accepted is small enough to trace.
+    this.maxMediaBytes = options.maxMediaBytes ?? 5242880;
+    this.maxMediaTotalBytes = options.maxMediaTotalBytes ?? 16777216;
     this.redact = options.redact;
     if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes < 64) {
       throw new Error('maxContentBytes must be an integer of at least 64');
     }
     if (!Number.isSafeInteger(this.maxMediaBytes) || this.maxMediaBytes < 0) {
       throw new Error('maxMediaBytes must be a non-negative integer');
+    }
+    if (
+      !Number.isSafeInteger(this.maxMediaTotalBytes) ||
+      this.maxMediaTotalBytes < 0
+    ) {
+      throw new Error('maxMediaTotalBytes must be a non-negative integer');
     }
   }
 
@@ -62,12 +130,24 @@ export class ContentPolicy {
       captureContent: this.enabled,
       maxContentBytes: this.maxBytes,
       maxMediaBytes: this.maxMediaBytes,
+      maxMediaTotalBytes: this.maxMediaTotalBytes,
       ...(this.redact ? { redact: this.redact } : {}),
       ...options,
     });
   }
 
-  encode(value: unknown, shape?: string): string | undefined {
+  budget(shape?: string): MediaBudget {
+    // Only a message shape is read back as media downstream; bytes anywhere
+    // else are stored verbatim and help nobody.
+    if (!shape) return MediaBudget.spent();
+    return new MediaBudget(this.maxMediaBytes, this.maxMediaTotalBytes);
+  }
+
+  encode(
+    value: unknown,
+    shape?: string,
+    budget: MediaBudget = this.budget(shape),
+  ): string | undefined {
     if (!this.enabled) return undefined;
     try {
       const normalized = normalizeFrameworkOutput(value);
@@ -82,8 +162,8 @@ export class ContentPolicy {
         if (typeof item === 'string') return item.slice(0, this.maxBytes);
         if (typeof item !== 'object' || types.isProxy(item))
           return '[unsupported]';
-        if (item instanceof Media)
-          return item.toPart(shape ? this.maxMediaBytes : 0) as JsonValue;
+        // After the proxy guard, since `instanceof` triggers getPrototypeOf.
+        if (item instanceof Media) return budget.part(item) as JsonValue;
         if (ancestors.has(item)) return '[truncated]';
         const array = Array.isArray(item);
         const prototype = Object.getPrototypeOf(item);

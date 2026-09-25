@@ -8,7 +8,7 @@ import type { ContentPolicy } from '@/content/policy';
 import { state } from '@/runtime/state';
 import { VERSION } from '@/runtime/version';
 import * as S from '@/semconv/generated';
-import { messageShape } from '@/content/policy';
+import { messageShape, spanBudget } from '@/content/policy';
 
 export interface CallbackOptions extends InstrumentationOptions {
   /** Maximum simultaneous spans retained by this adapter. Default: 4096. */
@@ -108,7 +108,11 @@ export class CallbackRuns {
       : direction === 'input'
         ? S.ATTR_CONFIDENT_SPAN_INPUT
         : S.ATTR_CONFIDENT_SPAN_OUTPUT;
-    const encoded = run.policy.encode(value, messageShape(key));
+    const encoded = run.policy.encode(
+      value,
+      messageShape(key),
+      spanBudget(run.span, run.policy, messageShape(key)),
+    );
     if (encoded === undefined) return;
     run.span.setAttribute(key, encoded);
     if (run.root)

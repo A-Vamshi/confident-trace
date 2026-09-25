@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import islice
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from .media import Media
 
@@ -15,19 +16,64 @@ MEDIA_TYPES = ("blob", "uri")
 MEDIA_OVERHEAD = 256
 
 
+class MediaBudget:
+    __slots__ = ("per_item", "remaining")
+
+    def __init__(self, per_item, per_attribute):
+        self.per_item = per_item
+        self.remaining = per_attribute
+
+    @classmethod
+    def spent(cls):
+        return cls(0, 0)
+
+    def part(self, media):
+        part = media.to_part(min(self.per_item, self.remaining))
+        if "content" in part:
+            self.remaining -= media.byte_size() or 0
+        return part
+
+
+_SPAN_BUDGETS: WeakKeyDictionary = WeakKeyDictionary()
+
+
+def span_budget(span, policy, shape):
+    """The budget this span shares with every other attribute it writes."""
+    if not shape:
+        return MediaBudget.spent()
+    budget = _SPAN_BUDGETS.get(span)
+    if budget is None:
+        budget = policy.budget(shape)
+        _SPAN_BUDGETS[span] = budget
+    return budget
+
+
 @dataclass(frozen=True)
 class ContentPolicy:
     enabled: bool = True
     max_bytes: int = 16384
     redact: Callable[[Any], Any] | None = None
-    max_media_bytes: int = 1048576
+    max_media_bytes: int = 5242880
+    max_media_total_bytes: int = 16777216
 
-    def encode(self, value: Any, *, shape: str | None = None) -> str | None:
+    def budget(self, shape) -> MediaBudget:
+        if not shape:
+            return MediaBudget.spent()
+        return MediaBudget(self.max_media_bytes, self.max_media_total_bytes)
+
+    def encode(
+        self,
+        value: Any,
+        *,
+        shape: str | None = None,
+        budget: MediaBudget | None = None,
+    ) -> str | None:
         if not self.enabled:
             return None
         try:
             value = self.redact(value) if self.redact else value
             remaining = [min(self.max_bytes, 1024)]
+            budget = self.budget(shape) if budget is None else budget
 
             def clean(item, depth=0):
                 remaining[0] -= 1
@@ -40,7 +86,7 @@ class ContentPolicy:
                 if type(item) is str:
                     return item[: self.max_bytes]
                 if type(item) is Media:
-                    return item.to_part(self.max_media_bytes if shape else 0)
+                    return budget.part(item)
                 if type(item) in (list, tuple):
                     return [
                         clean(v, depth + 1) for v in islice(item, max(0, remaining[0]))

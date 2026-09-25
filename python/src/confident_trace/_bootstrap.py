@@ -23,7 +23,7 @@ def init(
     export_non_ai_spans=False,
     capture_content=True,
     max_content_bytes=16384,
-    max_media_bytes=1048576,
+    max_media_bytes=5242880,
     redact=None,
     litellm_proxy_urls=(),
     openrouter_proxy_urls=(),

@@ -73,7 +73,7 @@ describe('budget', () => {
   });
 
   test('withOptions carries the media budget', () => {
-    expect(new ContentPolicy().withOptions({}).maxMediaBytes).toBe(1048576);
+    expect(new ContentPolicy().withOptions({}).maxMediaBytes).toBe(5242880);
     expect(
       new ContentPolicy({ maxMediaBytes: 32 }).withOptions({}).maxMediaBytes,
     ).toBe(32);
@@ -153,5 +153,103 @@ describe('provider and framework extraction reach the policy', () => {
       mime_type: 'application/pdf',
       content: PNG_BASE64,
     });
+  });
+});
+
+describe('the per-attribute media total', () => {
+  const twoImages = () =>
+    userMessage(
+      Media.fromBytes(PNG, 'image/png'),
+      Media.fromBytes(PNG, 'image/png'),
+    );
+
+  test('later payloads stop once the span total is spent', () => {
+    const policy = new ContentPolicy({ maxMediaTotalBytes: PNG.byteLength });
+    const parts = partsOf(policy, twoImages());
+    expect(parts[0].content).toBe(PNG_BASE64);
+    expect(parts[1].content_omitted).toBe(true);
+  });
+
+  test('references do not spend the total', () => {
+    const policy = new ContentPolicy({ maxMediaTotalBytes: PNG.byteLength });
+    const value = userMessage(
+      Media.fromUri('https://example.com/a.png'),
+      Media.fromBytes(PNG, 'image/png'),
+    );
+    const parts = partsOf(policy, value);
+    expect(parts[0].type).toBe('uri');
+    expect(parts[1].content).toBe(PNG_BASE64);
+  });
+
+  test('each attribute gets its own total', () => {
+    const policy = new ContentPolicy({ maxMediaTotalBytes: PNG.byteLength });
+    for (let i = 0; i < 3; i++) {
+      const parts = partsOf(
+        policy,
+        userMessage(Media.fromBytes(PNG, 'image/png')),
+      );
+      expect(parts[0].content).toBe(PNG_BASE64);
+    }
+  });
+
+  test('the per-item limit still applies under a large total', () => {
+    const policy = new ContentPolicy({
+      maxMediaBytes: PNG.byteLength - 1,
+      maxMediaTotalBytes: 1_000_000,
+    });
+    const parts = partsOf(
+      policy,
+      userMessage(Media.fromBytes(PNG, 'image/png')),
+    );
+    expect(parts[0].content_omitted).toBe(true);
+  });
+
+  test('withOptions carries the total and a negative one is rejected', () => {
+    expect(new ContentPolicy().withOptions({}).maxMediaTotalBytes).toBe(
+      16777216,
+    );
+    expect(() => new ContentPolicy({ maxMediaTotalBytes: -1 })).toThrow();
+  });
+});
+
+describe('one budget per span', () => {
+  const policy = new ContentPolicy({ maxMediaTotalBytes: PNG.byteLength });
+
+  test('every attribute of a span shares the allowance', async () => {
+    const { spanBudget } = await import('@/content/policy');
+    const span = {};
+    const first = spanBudget(span, policy, 'input-messages');
+    expect(spanBudget(span, policy, 'output-messages')).toBe(first);
+    expect(spanBudget(span, policy, undefined)).not.toBe(first);
+  });
+
+  test('separate spans do not share one', async () => {
+    const { spanBudget } = await import('@/content/policy');
+    expect(spanBudget({}, policy, shape)).not.toBe(
+      spanBudget({}, policy, shape),
+    );
+  });
+
+  test('a total spent on one attribute is gone from the next', async () => {
+    const { spanBudget } = await import('@/content/policy');
+    const span = {};
+    const first = policy.encode(
+      userMessage(Media.fromBytes(PNG, 'image/png')),
+      shape,
+      spanBudget(span, policy, shape),
+    );
+    const second = policy.encode(
+      [
+        {
+          role: 'assistant',
+          finish_reason: 'stop',
+          parts: [Media.fromBytes(PNG, 'image/png')],
+        },
+      ],
+      'output-messages',
+      spanBudget(span, policy, 'output-messages'),
+    );
+    expect(JSON.parse(first!)[0].parts[0].content).toBe(PNG_BASE64);
+    expect(JSON.parse(second!)[0].parts[0].content_omitted).toBe(true);
   });
 });

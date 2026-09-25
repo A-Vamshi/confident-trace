@@ -7,6 +7,7 @@ import jsonschema
 import pytest
 from conftest import REGISTRY
 
+import confident_trace as ct
 from confident_trace._core import content
 from confident_trace._core.content import ContentPolicy
 from confident_trace._core.media import Media
@@ -297,3 +298,79 @@ def test_unstorable_media_spends_no_budget():
         )
         == content.MEDIA_OVERHEAD
     )
+
+
+def test_a_span_media_total_stops_later_payloads():
+    first = Media.from_bytes(PNG, "image/png")
+    second = Media.from_bytes(PNG, "image/png")
+    policy = ContentPolicy(max_media_total_bytes=len(PNG))
+    parts = encoded_parts(policy, user_message(first, second))
+    assert b64decode(parts[0]["content"]) == PNG
+    assert parts[1]["content_omitted"] is True
+
+
+def test_the_span_total_is_spent_by_payloads_not_references():
+    remote = Media.from_uri("https://example.com/a.png")
+    inline = Media.from_bytes(PNG, "image/png")
+    policy = ContentPolicy(max_media_total_bytes=len(PNG))
+    parts = encoded_parts(policy, user_message(remote, inline))
+    assert parts[0]["type"] == "uri"
+    assert b64decode(parts[1]["content"]) == PNG
+
+
+def test_each_attribute_gets_its_own_span_total():
+    policy = ContentPolicy(max_media_total_bytes=len(PNG))
+    for _ in range(3):
+        parts = encoded_parts(policy, user_message(Media.from_bytes(PNG, "image/png")))
+        assert b64decode(parts[0]["content"]) == PNG
+
+
+def test_the_per_item_limit_still_applies_under_a_large_total():
+    policy = ContentPolicy(max_media_bytes=len(PNG) - 1, max_media_total_bytes=10**6)
+    parts = encoded_parts(policy, user_message(Media.from_bytes(PNG, "image/png")))
+    assert parts[0]["content_omitted"] is True
+
+
+def test_one_budget_is_shared_across_a_span_attributes(telemetry):
+    _, exporter = telemetry
+    policy = ContentPolicy(max_media_total_bytes=len(PNG))
+    with ct.span("request") as span:
+        first = content.span_budget(span, policy, "input-messages")
+        second = content.span_budget(span, policy, "output-messages")
+        assert first is second
+        unshaped = content.span_budget(span, policy, None)
+        assert unshaped is not first and unshaped.remaining == 0
+
+
+def test_separate_spans_do_not_share_a_budget(telemetry):
+    _, exporter = telemetry
+    policy = ContentPolicy(max_media_total_bytes=len(PNG))
+    with ct.span("a") as first_span, ct.span("b") as second_span:
+        assert content.span_budget(
+            first_span, policy, "input-messages"
+        ) is not content.span_budget(second_span, policy, "input-messages")
+
+
+def test_a_span_media_total_spans_its_attributes(telemetry):
+    _, exporter = telemetry
+    policy = ContentPolicy(max_media_total_bytes=len(PNG))
+    with ct.span("request") as span:
+        budget = content.span_budget(span, policy, "input-messages")
+        first = policy.encode(
+            user_message(Media.from_bytes(PNG, "image/png")),
+            shape="input-messages",
+            budget=budget,
+        )
+        second = policy.encode(
+            [
+                {
+                    "role": "assistant",
+                    "finish_reason": "stop",
+                    "parts": [Media.from_bytes(PNG, "image/png")],
+                }
+            ],
+            shape="output-messages",
+            budget=content.span_budget(span, policy, "output-messages"),
+        )
+    assert "content" in json.loads(first)[0]["parts"][0]
+    assert json.loads(second)[0]["parts"][0]["content_omitted"] is True

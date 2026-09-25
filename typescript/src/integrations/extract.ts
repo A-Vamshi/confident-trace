@@ -1,7 +1,7 @@
 import { frameworkOutputs } from '@/runtime/state';
 import { types } from 'node:util';
 import type { Span, AttributeValue } from '@opentelemetry/api';
-import { ContentPolicy, messageShape } from '@/content/policy';
+import { ContentPolicy, messageShape, spanBudget } from '@/content/policy';
 import { isBytes, Media } from '@/content/media';
 import type { GenAiMessage, GenAiPart } from '@/semconv/messages';
 import * as S from '@/semconv/generated';
@@ -178,7 +178,11 @@ export class Capture {
       this.span.setAttribute(key, value as AttributeValue);
   }
   content(key: string, value: unknown) {
-    const encoded = this.policy.encode(value, messageShape(key));
+    const encoded = this.policy.encode(
+      value,
+      messageShape(key),
+      spanBudget(this.span, this.policy, messageShape(key)),
+    );
     if (encoded !== undefined) this.span.setAttribute(key, encoded);
   }
   output(value: GenAiMessage[]) {
