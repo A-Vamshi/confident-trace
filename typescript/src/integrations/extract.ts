@@ -1,7 +1,7 @@
 import { frameworkOutputs } from '@/runtime/state';
 import { types } from 'node:util';
 import type { Span, AttributeValue } from '@opentelemetry/api';
-import { ContentPolicy } from '@/content/policy';
+import { ContentPolicy, messageShape } from '@/content/policy';
 import { isBytes, Media } from '@/content/media';
 import type { GenAiMessage, GenAiPart } from '@/semconv/messages';
 import * as S from '@/semconv/generated';
@@ -129,7 +129,7 @@ export function parts(value: unknown): GenAiPart[] {
       return tool(block);
     if (get(block, 'functionCall'))
       return tool(get(block, 'functionCall'), true);
-    return { type: 'text', content: '[unsupported content]' };
+    return media(block);
   });
 }
 export function messages(value: unknown): GenAiMessage[] {
@@ -178,7 +178,7 @@ export class Capture {
       this.span.setAttribute(key, value as AttributeValue);
   }
   content(key: string, value: unknown) {
-    const encoded = this.policy.encode(value);
+    const encoded = this.policy.encode(value, messageShape(key));
     if (encoded !== undefined) this.span.setAttribute(key, encoded);
   }
   output(value: GenAiMessage[]) {
@@ -391,7 +391,7 @@ export class Capture {
       const s = this.append(t);
       if (!s) continue;
       const last = this.retained.at(-1)?.parts[0];
-      if (last?.type === 'text') last.content += s;
+      if (last && 'type' in last && last.type === 'text') last.content += s;
       else
         this.retained.push({
           role: 'assistant',

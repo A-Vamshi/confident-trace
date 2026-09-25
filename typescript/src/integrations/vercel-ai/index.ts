@@ -15,6 +15,7 @@ import {
   parseContent,
   safely,
 } from '@/integrations/framework';
+import { messageShape } from '@/content/policy';
 import { get, list } from '@/integrations/extract';
 import { vercelSpanType } from '@/integrations/span-type';
 import { isDisabled } from '@/config/resolve';
@@ -100,7 +101,7 @@ export function createVercelAITracer(
     let outputText: string | undefined;
     let outputTools: unknown;
     const content = (key: string, value: unknown) => {
-      const encoded = policy.encode(value);
+      const encoded = policy.encode(value, messageShape(key));
       if (encoded !== undefined) span.setAttribute(key, encoded);
       if (encoded === '"[truncated]"')
         span.setAttribute(S.ATTR_CONFIDENT_SPAN_CONTENT_TRUNCATED, true);

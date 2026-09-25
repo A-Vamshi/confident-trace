@@ -1,6 +1,39 @@
 import { types } from 'node:util';
 import { normalizeFrameworkOutput } from '@/content/normalize';
+import { Media } from '@/content/media';
 import type { ContentOptions } from '@/content/types';
+import * as S from '@/semconv/generated';
+
+const MEDIA_TYPES = ['blob', 'uri'];
+const MEDIA_OVERHEAD = 256;
+const SHAPES: Record<string, string> = {
+  [S.ATTR_GEN_AI_INPUT_MESSAGES]: 'input-messages',
+  [S.ATTR_GEN_AI_OUTPUT_MESSAGES]: 'output-messages',
+  [S.ATTR_GEN_AI_SYSTEM_INSTRUCTIONS]: 'system-instructions',
+};
+
+/** The message shape an attribute carries, if the consumer reads media from it. */
+export function messageShape(key: string): string | undefined {
+  return SHAPES[key];
+}
+
+function mediaLength(value: unknown, depth = 0): number {
+  if (depth > 8 || !value || typeof value !== 'object') return 0;
+  if (Array.isArray(value))
+    return value.reduce<number>(
+      (total, item) => total + mediaLength(item, depth + 1),
+      0,
+    );
+  const record = value as Record<string, unknown>;
+  if (typeof record.type === 'string' && MEDIA_TYPES.includes(record.type)) {
+    const payload = record.content ?? record.uri;
+    return (typeof payload === 'string' ? payload.length : 0) + MEDIA_OVERHEAD;
+  }
+  return Object.values(record).reduce<number>(
+    (total, item) => total + mediaLength(item, depth + 1),
+    0,
+  );
+}
 
 type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -8,14 +41,19 @@ type JsonValue =
 export class ContentPolicy {
   readonly enabled: boolean;
   readonly maxBytes: number;
+  readonly maxMediaBytes: number;
   private readonly redact: ContentOptions['redact'];
 
   constructor(options: ContentOptions = {}) {
     this.enabled = options.captureContent ?? true;
     this.maxBytes = options.maxContentBytes ?? 16384;
+    this.maxMediaBytes = options.maxMediaBytes ?? 1048576;
     this.redact = options.redact;
     if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes < 64) {
       throw new Error('maxContentBytes must be an integer of at least 64');
+    }
+    if (!Number.isSafeInteger(this.maxMediaBytes) || this.maxMediaBytes < 0) {
+      throw new Error('maxMediaBytes must be a non-negative integer');
     }
   }
 
@@ -23,12 +61,13 @@ export class ContentPolicy {
     return new ContentPolicy({
       captureContent: this.enabled,
       maxContentBytes: this.maxBytes,
+      maxMediaBytes: this.maxMediaBytes,
       ...(this.redact ? { redact: this.redact } : {}),
       ...options,
     });
   }
 
-  encode(value: unknown): string | undefined {
+  encode(value: unknown, shape?: string): string | undefined {
     if (!this.enabled) return undefined;
     try {
       const normalized = normalizeFrameworkOutput(value);
@@ -43,6 +82,8 @@ export class ContentPolicy {
         if (typeof item === 'string') return item.slice(0, this.maxBytes);
         if (typeof item !== 'object' || types.isProxy(item))
           return '[unsupported]';
+        if (item instanceof Media)
+          return item.toPart(shape ? this.maxMediaBytes : 0) as JsonValue;
         if (ancestors.has(item)) return '[truncated]';
         const array = Array.isArray(item);
         const prototype = Object.getPrototypeOf(item);
@@ -82,15 +123,14 @@ export class ContentPolicy {
           ancestors.delete(item);
         }
       };
-      // Match Python's ASCII JSON byte accounting, including surrogate pairs.
-      const encoded = JSON.stringify(clean(redacted)).replace(
+      const cleaned = clean(redacted);
+      const limit = this.maxBytes + mediaLength(cleaned);
+      const encoded = JSON.stringify(cleaned).replace(
         /[\u007f-\uffff]/g,
         (character) =>
           `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
       );
-      return Buffer.byteLength(encoded) > this.maxBytes
-        ? '"[truncated]"'
-        : encoded;
+      return Buffer.byteLength(encoded) > limit ? '"[truncated]"' : encoded;
     } catch {
       return undefined;
     }
