@@ -152,11 +152,10 @@ class Media:
 
     @property
     def is_remote(self):
-        return (
-            not self.is_inline
-            and self.uri is not None
-            and self.uri.startswith(_REMOTE_SCHEMES)
-        )
+        if self.is_inline or self.uri is None:
+            return False
+        scheme = urlparse(self.uri).scheme
+        return len(scheme) > 1 and scheme != "file"
 
     @property
     def filename(self):
