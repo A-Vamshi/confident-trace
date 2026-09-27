@@ -33,6 +33,20 @@ def disabled():
     return os.getenv(otel_env.OTEL_SDK_DISABLED, "").lower() == "true" or suppressed()
 
 
+def default_compression():
+    """Compress unless the standard environment settings opt out.
+
+    Base64 media inflates a payload by a third and gzip more than recovers it.
+    Only the literal "none" opts out, so a misspelled value keeps the default
+    rather than disabling tracing.
+    """
+    configured = os.getenv(
+        otel_env.OTEL_EXPORTER_OTLP_TRACES_COMPRESSION,
+        os.getenv(otel_env.OTEL_EXPORTER_OTLP_COMPRESSION, ""),
+    )
+    return "none" if configured == "none" else "gzip"
+
+
 class OwnedProcessor(SpanProcessor):
     """A detachable gate around a standard batch processor.
 
@@ -229,23 +243,27 @@ def init(
                 default_key = resolved.get("x-confident-api-key")
                 if timeout is not None:
                     kwargs["timeout"] = timeout
-                if compression is not None:
+                selected_compression = compression or default_compression()
+                if selected_compression is not None:
                     if selected == "http/protobuf":
                         from opentelemetry.exporter.otlp.proto.http import Compression
 
-                        kwargs["compression"] = Compression(compression)
+                        kwargs["compression"] = Compression(selected_compression)
                     else:
                         import grpc
 
                         kwargs["compression"] = {
                             "gzip": grpc.Compression.Gzip,
                             "none": grpc.Compression.NoCompression,
-                        }[compression]
-                # Unspecified TLS, compression, timeout and endpoint settings are
-                # resolved by the standard exporter, including signal precedence.
+                        }[selected_compression]
+                # Unspecified TLS, timeout and endpoint settings are resolved by
+                # the standard exporter, including signal precedence.
                 exporter = BoundedSpanExporter(OTLPSpanExporter(**kwargs))
                 otlp_environment = safe(
-                    child_environment, selected, kwargs, compression=compression
+                    child_environment,
+                    selected,
+                    kwargs,
+                    compression=selected_compression,
                 )
                 if factory is None:
 
