@@ -2,11 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { ExportResultCode } from '@opentelemetry/core';
 import type { ExportResult } from '@opentelemetry/core';
 import type { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
-import {
-  SizeLimitedSpanExporter,
-  batches,
-  spanSize,
-} from '@/exporters/size-limited';
+import { BoundedSpanExporter, batches, spanSize } from '@/exporters/bounded';
 
 /** A SpanExporter that remembers the shape of every request it was given. */
 class Recorder implements SpanExporter {
@@ -46,7 +42,7 @@ function spanOf(payloadBytes: number): ReadableSpan {
   } as unknown as ReadableSpan;
 }
 
-function exported(exporter: SizeLimitedSpanExporter, spans: ReadableSpan[]) {
+function exported(exporter: BoundedSpanExporter, spans: ReadableSpan[]) {
   let result: ExportResult | undefined;
   exporter.export(spans, (value) => {
     result = value;
@@ -84,7 +80,7 @@ describe('splitting', () => {
 describe('the exporter', () => {
   test('splits what the collector would reject', () => {
     const recorder = new Recorder();
-    const exporter = new SizeLimitedSpanExporter(
+    const exporter = new BoundedSpanExporter(
       recorder,
       spanSize(spanOf(10)) * 2,
     );
@@ -99,7 +95,7 @@ describe('the exporter', () => {
 
   test('one failed request fails the export', () => {
     const recorder = new Recorder(1);
-    const exporter = new SizeLimitedSpanExporter(
+    const exporter = new BoundedSpanExporter(
       recorder,
       spanSize(spanOf(10)) * 2,
     );
@@ -111,7 +107,7 @@ describe('the exporter', () => {
 
   test('an empty export succeeds without a request', () => {
     const recorder = new Recorder();
-    expect(exported(new SizeLimitedSpanExporter(recorder), [])).toEqual({
+    expect(exported(new BoundedSpanExporter(recorder), [])).toEqual({
       code: ExportResultCode.SUCCESS,
     });
     expect(recorder.requests).toHaveLength(0);
@@ -119,7 +115,7 @@ describe('the exporter', () => {
 
   test('flush and shutdown reach the wrapped exporter', async () => {
     const recorder = new Recorder();
-    const exporter = new SizeLimitedSpanExporter(recorder);
+    const exporter = new BoundedSpanExporter(recorder);
     await exporter.forceFlush();
     await exporter.shutdown();
     expect(recorder.flushed && recorder.stopped).toBe(true);

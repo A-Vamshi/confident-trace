@@ -4,7 +4,7 @@ import pytest
 from opentelemetry.sdk.trace.export import SpanExportResult
 
 from confident_trace._core.batching import (
-    SizeLimitedExporter,
+    BoundedSpanExporter,
     batches,
     span_size,
 )
@@ -72,7 +72,7 @@ def test_a_span_too_large_alone_is_still_sent_alone():
 
 def test_the_exporter_splits_what_the_collector_would_reject():
     recorder = Recorder()
-    exporter = SizeLimitedExporter(recorder, max_bytes=span_size(span_of(10)) * 2)
+    exporter = BoundedSpanExporter(recorder, max_bytes=span_size(span_of(10)) * 2)
     spans = [span_of(10) for _ in range(5)]
     assert exporter.export(spans) is SpanExportResult.SUCCESS
     assert [len(request) for request in recorder.requests] == [2, 2, 1]
@@ -80,14 +80,14 @@ def test_the_exporter_splits_what_the_collector_would_reject():
 
 def test_one_failed_request_fails_the_export():
     recorder = Recorder(fail_over=1)
-    exporter = SizeLimitedExporter(recorder, max_bytes=span_size(span_of(10)) * 2)
+    exporter = BoundedSpanExporter(recorder, max_bytes=span_size(span_of(10)) * 2)
     assert exporter.export([span_of(10) for _ in range(3)]) is SpanExportResult.FAILURE
     assert len(recorder.requests) == 2  # Later batches are still attempted.
 
 
 def test_configuration_stays_readable_through_the_wrapper():
     recorder = Recorder()
-    exporter = SizeLimitedExporter(recorder)
+    exporter = BoundedSpanExporter(recorder)
     assert exporter._endpoint == recorder._endpoint
     exporter.force_flush()
     exporter.shutdown()
