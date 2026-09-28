@@ -7,6 +7,8 @@ import urllib.request
 import weakref
 from urllib.parse import urlencode
 
+from opentelemetry import trace
+
 from ..._core.runtime import log
 
 # About what the upload bound carries at 50 Mbps, roughly 25 minutes of call.
@@ -28,12 +30,16 @@ def register_recording_upload(runtime):
     ctx = get_job_context(required=False)
     if ctx is None or ctx in _jobs_with_recording_upload:
         return
+    span_context = trace.get_current_span().get_span_context()
+    if not span_context.is_valid:
+        return
+    trace_uuid = f"{span_context.trace_id:032x}"
     _jobs_with_recording_upload.add(ctx)
 
     # Shutdown callbacks run after the recorder closes and before
     # _on_cleanup deletes the session directory that holds the file.
     async def upload_call_recording():
-        await _upload(runtime, ctx)
+        await _upload(runtime, ctx, trace_uuid)
 
     ctx.add_shutdown_callback(upload_call_recording)
 
@@ -70,7 +76,7 @@ def _post(url, headers, body, result):
         result.append(False)
 
 
-async def _upload(runtime, ctx):
+async def _upload(runtime, ctx, trace_uuid):
     recording_endpoint = _recording_endpoint(runtime)
     if not (runtime.active and recording_endpoint and runtime.policy.enabled):
         return
@@ -80,8 +86,7 @@ async def _upload(runtime, ctx):
         report = ctx.make_session_report()
         path = report.audio_recording_path
         started_at = report.audio_recording_started_at
-        room_sid = ctx.job.room.sid
-        if path is None or started_at is None or not room_sid:
+        if path is None or started_at is None:
             return
         body = await asyncio.to_thread(_read, path)
         if not body:
@@ -89,7 +94,9 @@ async def _upload(runtime, ctx):
             return
 
         endpoint, headers = recording_endpoint
-        query = urlencode({"threadId": room_sid, "startedAt": round(started_at * 1000)})
+        query = urlencode(
+            {"traceUuid": trace_uuid, "startedAt": round(started_at * 1000)}
+        )
         result = []
         # A daemon thread so a hung upload cannot hold the worker past its bound.
         worker = threading.Thread(

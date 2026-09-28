@@ -1,4 +1,10 @@
-import { diag, ProxyTracerProvider } from '@opentelemetry/api';
+import {
+  context,
+  diag,
+  isSpanContextValid,
+  ProxyTracerProvider,
+  trace,
+} from '@opentelemetry/api';
 import { enabled, failed, onActivate } from '@/auto/control';
 import { observed, replace } from '@/auto/patch';
 import type { Foreign } from '@/auto/patch';
@@ -19,10 +25,13 @@ function registerRecordingUpload(): void {
     if (ctx) break;
   }
   if (!ctx || jobsWithRecordingUpload.has(ctx)) return;
+  const spanContext = trace.getSpan(context.active())?.spanContext();
+  if (!spanContext || !isSpanContextValid(spanContext)) return;
   jobsWithRecordingUpload.add(ctx);
   // Shutdown callbacks run after the session closes its recorder.
   const job = ctx;
-  job.addShutdownCallback(() => uploadCallRecording(job));
+  const traceUuid = spanContext.traceId;
+  job.addShutdownCallback(() => uploadCallRecording(job, traceUuid));
 }
 
 export function attachLiveKit(exports: Foreign, modulePath = ''): void {

@@ -62,6 +62,7 @@ export type LiveKitJobContext = {
 /** Send the call audio LiveKit recorded itself (`record: true`) to Confident. */
 export async function uploadCallRecording(
   ctx: LiveKitJobContext,
+  traceUuid: string,
 ): Promise<void> {
   const target = recordingEndpoint();
   if (!target || !state.runtime?.active || !state.policy?.enabled) return;
@@ -70,14 +71,13 @@ export async function uploadCallRecording(
     const report = ctx.makeSessionReport();
     const path = report.audioRecordingPath;
     const startedAt = report.audioRecordingStartedAt;
-    const roomSid = ctx.job.room?.sid;
-    if (!path || startedAt === undefined || !roomSid) return;
+    if (!path || startedAt === undefined) return;
     if ((await stat(path)).size > MAX_RECORDING_BYTES) {
       diag.warn('LiveKit call recording is too large to upload');
       return;
     }
     const query = new URLSearchParams({
-      threadId: roomSid,
+      traceUuid,
       startedAt: String(Math.round(startedAt)),
     });
     const response = await fetch(`${target.url}?${query}`, {

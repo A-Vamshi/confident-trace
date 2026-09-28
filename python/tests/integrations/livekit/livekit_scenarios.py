@@ -4,6 +4,7 @@ import json
 
 import httpx
 import pytest
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -296,6 +297,13 @@ def recording(tmp_path):
     return path
 
 
+def register_recording_for_trace(runtime, register_recording_upload):
+    with ct.span("livekit-job"):
+        span_context = trace.get_current_span().get_span_context()
+        register_recording_upload(runtime)
+    return f"{span_context.trace_id:032x}"
+
+
 @pytest.mark.asyncio
 async def test_call_recording_is_uploaded(monkeypatch, tmp_path):
     from confident_trace.integrations.livekit.recording import (
@@ -307,12 +315,12 @@ async def test_call_recording_is_uploaded(monkeypatch, tmp_path):
         endpoint=receiver.endpoint, api_key="key", instrumentations=("livekit",)
     )
     callbacks = fake_job_context(monkeypatch, recording(tmp_path))
-    register_recording_upload(runtime)
+    trace_uuid = register_recording_for_trace(runtime, register_recording_upload)
     register_recording_upload(runtime)
     assert len(callbacks) == 1
     await callbacks[0]()
     [(path, headers, body)] = receiver.received
-    assert path == "/v1/call-recordings?threadId=RM_room&startedAt=1788652800500"
+    assert path == f"/v1/call-recordings?traceUuid={trace_uuid}&startedAt=1788652800500"
     assert headers["x-confident-api-key"] == "key"
     assert headers["content-type"] == "audio/ogg"
     assert body == b"OggS-call-audio"
@@ -337,7 +345,7 @@ async def test_call_recording_is_skipped(case, monkeypatch, tmp_path):
     )
     path = None if case == "not_recorded" else recording(tmp_path)
     callbacks = fake_job_context(monkeypatch, path)
-    register_recording_upload(runtime)
+    register_recording_for_trace(runtime, register_recording_upload)
     await callbacks[0]()
     assert receiver.received == []
     ct.shutdown()
@@ -356,10 +364,22 @@ async def test_call_recording_upload_is_bounded(monkeypatch, tmp_path):
         endpoint=receiver.endpoint, api_key="key", instrumentations=("livekit",)
     )
     callbacks = fake_job_context(monkeypatch, recording(tmp_path))
-    register_recording_upload(runtime)
+    register_recording_for_trace(runtime, register_recording_upload)
     start = time.monotonic()
     await callbacks[0]()
     assert 2.5 < time.monotonic() - start < 5
+    ct.shutdown()
+
+
+def test_call_recording_is_skipped_without_an_active_trace(monkeypatch, tmp_path):
+    from confident_trace.integrations.livekit.recording import (
+        register_recording_upload,
+    )
+
+    runtime = ct.init(exporter=InMemorySpanExporter(), instrumentations=("livekit",))
+    callbacks = fake_job_context(monkeypatch, recording(tmp_path))
+    register_recording_upload(runtime)
+    assert callbacks == []
     ct.shutdown()
 
 

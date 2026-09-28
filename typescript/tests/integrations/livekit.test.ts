@@ -248,6 +248,7 @@ async function receiver(delayMs = 0) {
 async function recordedCall(
   options: InitOptions,
   report: { audioRecordingPath?: string; audioRecordingStartedAt?: number },
+  withActiveTrace = true,
 ) {
   const { init } = await import('@/runtime/init');
   const { attachLiveKit } = await import('@/auto/livekit');
@@ -268,9 +269,26 @@ async function recordedCall(
   attachLiveKit({ getJobContext: () => ctx });
   attachLiveKit({ AgentSession });
   const session = new AgentSession();
-  expect(await session.start()).toBe('started');
-  await session.start();
-  return callbacks;
+  const startSession = async () => {
+    expect(await session.start()).toBe('started');
+    await session.start();
+  };
+  let traceUuid: string | undefined;
+  if (withActiveTrace) {
+    await trace
+      .getTracer('livekit-recording-test')
+      .startActiveSpan('livekit-job', async (span) => {
+        traceUuid = span.spanContext().traceId;
+        try {
+          await startSession();
+        } finally {
+          span.end();
+        }
+      });
+  } else {
+    await startSession();
+  }
+  return { callbacks, traceUuid };
 }
 
 async function recordingFile() {
@@ -285,7 +303,7 @@ async function recordingFile() {
 it('uploads the call recording once per job at shutdown', async () => {
   const edge = await receiver();
   try {
-    const callbacks = await recordedCall(
+    const { callbacks, traceUuid } = await recordedCall(
       { endpoint: edge.endpoint, apiKey: 'key' },
       {
         audioRecordingPath: await recordingFile(),
@@ -296,8 +314,9 @@ it('uploads the call recording once per job at shutdown', async () => {
     await callbacks[0]!();
     expect(edge.uploads).toHaveLength(1);
     const [upload] = edge.uploads;
+    expect(traceUuid).toMatch(/^[0-9a-f]{32}$/);
     expect(upload!.url).toBe(
-      '/v1/call-recordings?threadId=RM_room&startedAt=1788652800500',
+      `/v1/call-recordings?traceUuid=${traceUuid}&startedAt=1788652800500`,
     );
     expect(upload!.headers['x-confident-api-key']).toBe('key');
     expect(upload!.headers['content-type']).toBe('audio/ogg');
@@ -310,7 +329,7 @@ it('uploads the call recording once per job at shutdown', async () => {
 it('skips the upload when the call was not recorded', async () => {
   const edge = await receiver();
   try {
-    const callbacks = await recordedCall(
+    const { callbacks } = await recordedCall(
       { endpoint: edge.endpoint, apiKey: 'key' },
       {},
     );
@@ -324,7 +343,7 @@ it('skips the upload when the call was not recorded', async () => {
 it('skips the upload when content capture is off', async () => {
   const edge = await receiver();
   try {
-    const callbacks = await recordedCall(
+    const { callbacks } = await recordedCall(
       { endpoint: edge.endpoint, apiKey: 'key', captureContent: false },
       {
         audioRecordingPath: await recordingFile(),
@@ -342,7 +361,7 @@ it('skips the upload when LiveKit PII telemetry is withheld', async () => {
   vi.stubEnv('LIVEKIT_TELEMETRY_ALLOW_PII', '0');
   const edge = await receiver();
   try {
-    const callbacks = await recordedCall(
+    const { callbacks } = await recordedCall(
       { endpoint: edge.endpoint, apiKey: 'key' },
       {
         audioRecordingPath: await recordingFile(),
@@ -357,10 +376,27 @@ it('skips the upload when LiveKit PII telemetry is withheld', async () => {
   }
 });
 
+it('skips recording registration without an active trace', async () => {
+  const edge = await receiver();
+  try {
+    const { callbacks } = await recordedCall(
+      { endpoint: edge.endpoint, apiKey: 'key' },
+      {
+        audioRecordingPath: await recordingFile(),
+        audioRecordingStartedAt: 1788652800500,
+      },
+      false,
+    );
+    expect(callbacks).toEqual([]);
+  } finally {
+    edge.close();
+  }
+});
+
 it('bounds a hung call recording upload', async () => {
   const edge = await receiver(10_000);
   try {
-    const callbacks = await recordedCall(
+    const { callbacks } = await recordedCall(
       { endpoint: edge.endpoint, apiKey: 'key' },
       {
         audioRecordingPath: await recordingFile(),
