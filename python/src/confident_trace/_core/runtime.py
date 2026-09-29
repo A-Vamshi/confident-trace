@@ -18,6 +18,7 @@ from opentelemetry.util.re import parse_env_headers
 from .. import _attributes as confident
 from .._semconv.genai_v1_37_0 import SCHEMA_URL
 from .._semconv.genai_v1_37_0 import SEMCONV_VERSION as SEMCONV_VERSION
+from .batching import BoundedSpanExporter
 from .content import ContentPolicy
 from .otlp import child_environment
 from .safety import safe
@@ -30,6 +31,20 @@ log.addHandler(logging.NullHandler())
 
 def disabled():
     return os.getenv(otel_env.OTEL_SDK_DISABLED, "").lower() == "true" or suppressed()
+
+
+def default_compression():
+    """Compress unless the standard environment settings opt out.
+
+    Base64 media inflates a payload by a third and gzip more than recovers it.
+    Only the literal "none" opts out, so a misspelled value keeps the default
+    rather than disabling tracing.
+    """
+    configured = os.getenv(
+        otel_env.OTEL_EXPORTER_OTLP_TRACES_COMPRESSION,
+        os.getenv(otel_env.OTEL_EXPORTER_OTLP_COMPRESSION, ""),
+    )
+    return "none" if configured == "none" else "gzip"
 
 
 class OwnedProcessor(SpanProcessor):
@@ -142,6 +157,7 @@ def init(
     export_non_ai_spans=False,
     capture_content=True,
     max_content_bytes=16384,
+    max_media_bytes=5242880,
     redact=None,
     litellm_proxy_urls=(),
     openrouter_proxy_urls=(),
@@ -169,6 +185,8 @@ def init(
         try:
             if max_content_bytes < 64:
                 raise ValueError("max_content_bytes must be at least 64")
+            if max_media_bytes < 0:
+                raise ValueError("max_media_bytes must not be negative")
             provider = (
                 tracer_provider
                 if tracer_provider is not None
@@ -229,23 +247,27 @@ def init(
                 default_key = resolved.get("x-confident-api-key")
                 if timeout is not None:
                     kwargs["timeout"] = timeout
-                if compression is not None:
+                selected_compression = compression or default_compression()
+                if selected_compression is not None:
                     if selected == "http/protobuf":
                         from opentelemetry.exporter.otlp.proto.http import Compression
 
-                        kwargs["compression"] = Compression(compression)
+                        kwargs["compression"] = Compression(selected_compression)
                     else:
                         import grpc
 
                         kwargs["compression"] = {
                             "gzip": grpc.Compression.Gzip,
                             "none": grpc.Compression.NoCompression,
-                        }[compression]
-                # Unspecified TLS, compression, timeout and endpoint settings are
-                # resolved by the standard exporter, including signal precedence.
-                exporter = OTLPSpanExporter(**kwargs)
+                        }[selected_compression]
+                # Unspecified TLS, timeout and endpoint settings are resolved by
+                # the standard exporter, including signal precedence.
+                exporter = BoundedSpanExporter(OTLPSpanExporter(**kwargs))
                 otlp_environment = safe(
-                    child_environment, selected, kwargs, compression=compression
+                    child_environment,
+                    selected,
+                    kwargs,
+                    compression=selected_compression,
                 )
                 if selected == "http/protobuf":
                     otlp_http_export = (kwargs["endpoint"], dict(resolved))
@@ -259,7 +281,7 @@ def init(
                                 "x-confident-api-key": project_key,
                             },
                         }
-                        return OTLPSpanExporter(**project_kwargs)
+                        return BoundedSpanExporter(OTLPSpanExporter(**project_kwargs))
 
             processor = OwnedProcessor(
                 RoutingProcessor(
@@ -272,7 +294,9 @@ def init(
             provider.add_span_processor(processor)
             runtime = Runtime(
                 provider,
-                ContentPolicy(capture_content, max_content_bytes, redact),
+                ContentPolicy(
+                    capture_content, max_content_bytes, redact, max_media_bytes
+                ),
                 processor,
                 otlp_environment=otlp_environment,
                 otlp_http_export=otlp_http_export,

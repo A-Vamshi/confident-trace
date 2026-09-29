@@ -1,4 +1,5 @@
 import { Ancestry, spanKey } from '@/runtime/ancestry';
+import { BoundedSpanExporter } from '@/exporters/bounded';
 import { ambientOnStart } from '@/spans/index';
 import { diag } from '@opentelemetry/api';
 import type { Context, Span as ApiSpan } from '@opentelemetry/api';
@@ -239,9 +240,11 @@ export function createSpanProcessor(
   const create = (apiKey?: string): SpanExporter => {
     const resolved = { ...baseOptions!, headers: { ...baseOptions!.headers } };
     if (apiKey !== undefined) resolved.headers['x-confident-api-key'] = apiKey;
-    return resolved.protocol === 'grpc'
-      ? createGrpcExporter(resolved)
-      : createHttpExporter(resolved);
+    return new BoundedSpanExporter(
+      resolved.protocol === 'grpc'
+        ? createGrpcExporter(resolved)
+        : createHttpExporter(resolved),
+    );
   };
   const exporter = options.exporter ?? create();
   const factory =

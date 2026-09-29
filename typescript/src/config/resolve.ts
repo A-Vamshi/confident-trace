@@ -63,6 +63,11 @@ export function resolveExportOptions(
       throw new Error('Unsupported compression');
     }
     result.compression = options.compression;
+  } else {
+    const configured =
+      env.OTEL_EXPORTER_OTLP_TRACES_COMPRESSION ??
+      env.OTEL_EXPORTER_OTLP_COMPRESSION;
+    result.compression = configured === 'none' ? 'none' : 'gzip';
   }
   return result;
 }

@@ -485,7 +485,8 @@ it('Mastra shutdown is idempotent and does not shut down the application OTel pr
   expect(spans()).toHaveLength(1);
 });
 
-it('omits multimodal payloads and keeps existing third-party spans unchanged', () => {
+it('rebuilds upstream media through our budget and leaves third-party spans unchanged', () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
   const tracer = createVercelAITracer();
   const span = tracer.startSpan('chat test');
   span.setAttributes({
@@ -493,19 +494,32 @@ it('omits multimodal payloads and keeps existing third-party spans unchanged', (
       {
         role: 'user',
         parts: [
-          { type: 'blob', content: 'secret-image-base64' },
+          { type: 'blob', mime_type: 'image/png', content: png },
+          { type: 'blob', content: 'secret-payload-of-unknown-type' },
           { type: 'text', content: 'Hello' },
         ],
       },
     ]),
     'gen_ai.system_instructions': JSON.stringify([
-      { type: 'blob', content: 'secret-image-base64' },
+      { type: 'uri', mime_type: 'image/png', uri: 'https://example.com/a.png' },
     ]),
   });
   span.end();
-  expect(JSON.stringify(spans()[0]!.attributes)).not.toContain(
-    'secret-image-base64',
+  const attributes = spans()[0]!.attributes;
+  const input = JSON.parse(attributes['gen_ai.input.messages'] as string);
+  expect(input[0].parts).toEqual([
+    { type: 'blob', mime_type: 'image/png', content: png },
+    { type: 'blob', content_omitted: true },
+    { type: 'text', content: 'Hello' },
+  ]);
+  expect(JSON.stringify(attributes)).not.toContain(
+    'secret-payload-of-unknown-type',
   );
+  expect(
+    JSON.parse(attributes['gen_ai.system_instructions'] as string),
+  ).toEqual([
+    { type: 'uri', mime_type: 'image/png', uri: 'https://example.com/a.png' },
+  ]);
   const other = trace.getTracer('third-party').startSpan('other');
   other.setAttribute('ai.prompt', 'unchanged');
   other.end();

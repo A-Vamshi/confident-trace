@@ -227,6 +227,33 @@ def test_resource_env_and_explicit_exporter_precedence(monkeypatch):
     ct.shutdown()
 
 
+def test_payloads_are_compressed_unless_opted_out(monkeypatch):
+    ct.shutdown()
+    from opentelemetry.exporter.otlp.proto.http import Compression
+
+    for name in (
+        "OTEL_EXPORTER_OTLP_COMPRESSION",
+        "OTEL_EXPORTER_OTLP_TRACES_COMPRESSION",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    def compression_of(**kwargs):
+        ct.shutdown()
+        rt = ct.init(instrumentations=(), **kwargs)
+        value = rt.processor.delegate.span_exporter._compression
+        ct.shutdown()
+        return value
+
+    assert compression_of() == Compression.Gzip
+    assert compression_of(compression="none") == Compression.NoCompression
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_COMPRESSION", "none")
+    assert compression_of() == Compression.NoCompression
+    assert compression_of(compression="gzip") == Compression.Gzip
+    # A misspelled environment value keeps the default rather than failing.
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_COMPRESSION", "gzipp")
+    assert compression_of() == Compression.Gzip
+
+
 def test_redaction_and_capture_opt_out(telemetry):
     provider, _ = telemetry
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (

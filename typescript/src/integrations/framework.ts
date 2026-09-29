@@ -1,7 +1,8 @@
 import { ContentPolicy } from '@/content/policy';
 import type { ContentOptions } from '@/content/types';
 import { state } from '@/runtime/state';
-import { get, list } from '@/integrations/extract';
+import { get, list, media } from '@/integrations/extract';
+import { Media } from '@/content/media';
 import type { GenAiMessage, GenAiPart } from '@/semconv/messages';
 
 export function frameworkPolicy(options: ContentOptions): ContentPolicy {
@@ -14,7 +15,7 @@ export function safely(action: () => void): void {
     /* Telemetry failures must not affect framework execution. */
   }
 }
-/** Normalize the text/tool subset used by AI SDK and Mastra. Never inspect binary parts. */
+/** Normalize the text/tool subset used by AI SDK and Mastra, plus media. */
 export function frameworkMessages(
   value: unknown,
   role = 'user',
@@ -44,7 +45,7 @@ export function frameworkMessages(
                   : {}),
                 arguments: get(part, 'input') ?? get(part, 'args'),
               };
-            return { type: 'text', content: '[unsupported content]' };
+            return media(part);
           });
     return { role: typeof r === 'string' ? r : role, parts };
   });
@@ -76,6 +77,20 @@ export function semanticMessages(value: unknown): unknown {
   }));
 }
 
+function upstreamMedia(part: unknown): Media | undefined {
+  const kind = get(part, 'type');
+  if (kind !== 'blob' && kind !== 'uri') return undefined;
+  const declared = get(part, 'mime_type');
+  const mimeType = typeof declared === 'string' ? declared : undefined;
+  const source = get(part, kind === 'uri' ? 'uri' : 'content');
+  if (typeof source !== 'string') return new Media({ mimeType });
+  const rebuilt =
+    kind === 'uri'
+      ? Media.fromUri(source, mimeType)
+      : Media.fromBase64(source, mimeType);
+  return rebuilt ?? new Media({ mimeType });
+}
+
 export function semanticParts(value: unknown): unknown {
   if (typeof value === 'string') return value;
   return list(value).map((part) => {
@@ -93,7 +108,9 @@ export function semanticParts(value: unknown): unknown {
           : {}),
         arguments: get(part, 'arguments'),
       };
-    return { type: 'text', content: '[unsupported content]' };
+    return (
+      upstreamMedia(part) ?? { type: 'text', content: '[unsupported content]' }
+    );
   });
 }
 export function frameworkOutput(value: unknown): GenAiMessage[] {

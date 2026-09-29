@@ -15,6 +15,7 @@ describe('export configuration', () => {
       protocol: 'http/protobuf',
       endpoint: 'https://otel.confident-ai.com/v1/traces',
       headers: {},
+      compression: 'gzip',
     });
   });
   it('uses explicit then trace-specific then generic options', () => {
@@ -25,6 +26,7 @@ describe('export configuration', () => {
       protocol: 'http/protobuf',
       endpoint: 'https://otel.confident-ai.com/v1/traces',
       headers: {},
+      compression: 'gzip',
     });
     expect(
       resolveExportOptions({
@@ -39,6 +41,22 @@ describe('export configuration', () => {
       timeoutMillis: 50,
       compression: 'gzip',
     });
+  });
+  it('compresses payloads unless opted out', () => {
+    expect(resolveExportOptions({})).toMatchObject({ compression: 'gzip' });
+    expect(resolveExportOptions({ compression: 'none' })).toMatchObject({
+      compression: 'none',
+    });
+    vi.stubEnv('OTEL_EXPORTER_OTLP_COMPRESSION', 'none');
+    expect(resolveExportOptions({})).toMatchObject({ compression: 'none' });
+    expect(resolveExportOptions({ compression: 'gzip' })).toMatchObject({
+      compression: 'gzip',
+    });
+    vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_COMPRESSION', 'gzip');
+    expect(resolveExportOptions({})).toMatchObject({ compression: 'gzip' });
+    // A misspelled environment value keeps the default rather than throwing.
+    vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_COMPRESSION', 'gzipp');
+    expect(resolveExportOptions({})).toMatchObject({ compression: 'gzip' });
   });
   it('uses the Confident endpoint before OTel variables and after explicit options', () => {
     vi.stubEnv(
