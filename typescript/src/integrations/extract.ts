@@ -39,7 +39,7 @@ function tool(value: unknown, google = false): GenAiPart {
     arguments: get(value, google ? 'args' : 'arguments') ?? get(value, 'input'),
   };
 }
-// `get` already falls back to camelCase, so each spelling is listed once.
+
 const MIME_KEYS = ['mime_type', 'media_type'];
 const DATA_KEYS = ['data', 'base64', 'bytes'];
 const REFERENCE_KEYS = [
@@ -69,7 +69,7 @@ const MIME_BY_FORMAT: Record<string, string> = {
   wav: 'audio/wav',
   webp: 'image/webp',
 };
-// Bedrock is the deepest: a typed wrapper, a source, then an S3 location.
+
 const MAX_NESTING = 3;
 
 function field(source: unknown, keys: readonly string[]): string | undefined {
@@ -87,6 +87,7 @@ function nested(source: unknown): unknown {
   }
   return undefined;
 }
+
 // Read one provider media block into Media.
 export function media(block: unknown): Media {
   let source = block;

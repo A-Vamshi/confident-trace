@@ -13,18 +13,10 @@ const SHAPES: Record<string, string> = {
   [S.ATTR_GEN_AI_SYSTEM_INSTRUCTIONS]: 'system-instructions',
 };
 
-/** The message shape an attribute carries, if the consumer reads media from it. */
 export function messageShape(key: string): string | undefined {
   return SHAPES[key];
 }
 
-/** One attribute's media allowance, spent as each part is built.
- *
- * Two limits apply at once: no single payload may exceed `perItem`, and the
- * attribute as a whole may not exceed `perAttribute`. The second is what keeps
- * one span shippable on its own, since a span too large for the collector
- * cannot be split into smaller ones.
- */
 export class MediaBudget {
   private remaining: number;
 
@@ -35,14 +27,11 @@ export class MediaBudget {
     this.remaining = perAttribute;
   }
 
-  /** A budget that admits nothing, for content read back without media. */
   static spent(): MediaBudget {
     return new MediaBudget(0, 0);
   }
 
   part(media: Media): MediaPart {
-    // Both limits count decoded bytes, the same unit `toPart` checks; base64
-    // inflates the wire by a third that the defaults allow for.
     const part = media.toPart(Math.min(this.perItem, this.remaining));
     if ('content' in part) this.remaining -= media.byteSize() ?? 0;
     return part;
@@ -70,18 +59,8 @@ function mediaLength(value: unknown, depth = 0): number {
 type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
-// A span carries one allowance across every attribute it writes. The span is
-// the unit the collector accepts or rejects, and one too large to send cannot
-// be split, so counting per attribute would let three of them add up past the
-// limit. Weak keys mean an ended span takes its budget with it.
 const spanBudgets = new WeakMap<object, MediaBudget>();
 
-/** The budget this span shares with every other attribute it writes.
- *
- * `owner` is any object that lives exactly as long as the span's writes do:
- * the span itself, or the attribute bag an integration fills before the span
- * exists.
- */
 export function spanBudget(
   owner: object,
   policy: ContentPolicy,
@@ -106,8 +85,6 @@ export class ContentPolicy {
   constructor(options: ContentOptions = {}) {
     this.enabled = options.captureContent ?? true;
     this.maxBytes = options.maxContentBytes ?? 16384;
-    // Five MiB is the smallest per-image limit the major providers set, so
-    // anything a model accepted is small enough to trace.
     this.maxMediaBytes = options.maxMediaBytes ?? 5242880;
     this.maxMediaTotalBytes = options.maxMediaTotalBytes ?? 16777216;
     this.redact = options.redact;
@@ -137,8 +114,6 @@ export class ContentPolicy {
   }
 
   budget(shape?: string): MediaBudget {
-    // Only a message shape is read back as media downstream; bytes anywhere
-    // else are stored verbatim and help nobody.
     if (!shape) return MediaBudget.spent();
     return new MediaBudget(this.maxMediaBytes, this.maxMediaTotalBytes);
   }
@@ -162,7 +137,6 @@ export class ContentPolicy {
         if (typeof item === 'string') return item.slice(0, this.maxBytes);
         if (typeof item !== 'object' || types.isProxy(item))
           return '[unsupported]';
-        // After the proxy guard, since `instanceof` triggers getPrototypeOf.
         if (item instanceof Media) return budget.part(item) as JsonValue;
         if (ancestors.has(item)) return '[truncated]';
         const array = Array.isArray(item);

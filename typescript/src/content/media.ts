@@ -139,7 +139,6 @@ export class Media {
     return new Media({ encoded: payload, mimeType: parameters[0] });
   }
 
-  /** Read an opaque value; prefer a constructor when the field is named. */
   static parse(value: unknown, mimeType?: string): Media | undefined {
     if (isBytes(value)) return Media.fromBytes(value, mimeType);
     if (typeof value !== 'string' || !value) return undefined;
@@ -147,7 +146,6 @@ export class Media {
     const prefix = scheme(value);
     if (REMOTE_SCHEMES.includes(prefix) || value.startsWith(FILE_URI))
       return Media.fromUri(value, mimeType);
-    // A declared mime type is what separates raw base64 from a short path.
     if (mimeType !== undefined && isBase64(value))
       return Media.fromBase64(value, mimeType);
     if (value.length <= MAX_PATH_LENGTH) return Media.fromUri(value, mimeType);
@@ -159,8 +157,6 @@ export class Media {
   }
 
   get isRemote(): boolean {
-    // Any scheme we cannot open ourselves is somebody else's to fetch, so
-    // gs:// and s3:// travel as references rather than being dropped.
     if (this.isInline || this.uri === undefined) return false;
     const prefix = scheme(this.uri);
     return prefix.length > 1 && prefix !== 'file';
@@ -184,7 +180,6 @@ export class Media {
     }
   }
 
-  /** Decoded size, without reading a file or decoding base64. */
   byteSize(): number | undefined {
     if (this.#size !== undefined) return this.#size;
     if (this.#data !== undefined) this.#size = this.#data.byteLength;
@@ -227,7 +222,6 @@ export class Media {
   toPart(maxBytes?: number): MediaPart {
     const mime =
       this.mimeType === undefined ? {} : { mime_type: this.mimeType };
-    // A reference costs nothing to carry whatever its type.
     if (this.isRemote) return { type: 'uri', ...mime, uri: this.uri! };
     const encoded = supportedMedia(this.mimeType)
       ? this.base64(maxBytes)
