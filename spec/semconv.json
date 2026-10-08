@@ -3,6 +3,8 @@
   "semconvVersion": "1.37.0",
   "schemaUrl": "https://opentelemetry.io/schemas/1.37.0",
   "attributes": {
+    "ATTR_CONFIDENT_SPAN_ATTACHMENTS": "confident.span.attachments",
+    "ATTR_CONFIDENT_SPAN_AUDIO": "confident.span.audio",
     "ATTR_CONFIDENT_SPAN_CONTENT_TRUNCATED": "confident.span.content_truncated",
     "ATTR_CONFIDENT_SPAN_CONTEXT": "confident.span.context",
     "ATTR_CONFIDENT_SPAN_EXPECTED_OUTPUT": "confident.span.expected_output",
@@ -15,6 +17,7 @@
     "ATTR_CONFIDENT_SPAN_RETRIEVAL_CONTEXT": "confident.span.retrieval_context",
     "ATTR_CONFIDENT_SPAN_TOOLS_CALLED": "confident.span.tools_called",
     "ATTR_CONFIDENT_SPAN_TYPE": "confident.span.type",
+    "ATTR_CONFIDENT_TRACE_AUDIO": "confident.trace.audio",
     "ATTR_CONFIDENT_TRACE_CONTEXT": "confident.trace.context",
     "ATTR_CONFIDENT_TRACE_ENVIRONMENT": "confident.trace.environment",
     "ATTR_CONFIDENT_TRACE_EXPECTED_OUTPUT": "confident.trace.expected_output",
