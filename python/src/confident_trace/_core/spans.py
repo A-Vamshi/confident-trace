@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import json
 import logging
 import math
 import warnings
@@ -18,14 +19,49 @@ from opentelemetry.trace import Link, Status, StatusCode
 from .. import _attributes as confident
 from .._semconv import genai_v1_37_0 as ai
 from . import runtime as _runtime
-from .content import span_budget
+from .content import resolve_markers, span_budget
+from .media import AUDIO_MIME_PREFIX, Media
 from .safety import safe
 from .scopes import _DEFER_TRACE_CONTEXT, _TRACE_CONTEXT, _Scope, suppressed
 
 _ENTRY = context.create_key(confident.ENTRY_CONTEXT_KEY)
+_ATTACHMENTS: WeakKeyDictionary = WeakKeyDictionary()
 
 
-def content(span, key, value):
+def _carried(by_key):
+    return {k: v for found in by_key.values() for k, v in found.items()}
+
+
+def _record_attachments(span, key, found):
+    by_key = _ATTACHMENTS.setdefault(span, {})
+    if not found and by_key.pop(key, None) is None:
+        return
+    if found:
+        by_key[key] = found
+    safe(
+        span.set_attribute,
+        confident.SPAN_ATTACHMENTS,
+        json.dumps(_carried(by_key), separators=(",", ":")),
+    )
+
+
+def _audio(span, key, media):
+    rt = _runtime.current()
+    if not (rt and rt.policy.enabled and span.is_recording()):
+        return
+    marker, found = resolve_markers(
+        str(media),
+        span_budget(span, rt.policy),
+        _carried(_ATTACHMENTS.get(span, {})),
+    )
+    _record_attachments(span, key, found)
+    if found:
+        safe(span.set_attribute, key, marker)
+    else:
+        _runtime.log.debug("Audio over the media budget or unreadable was not attached")
+
+
+def content(span, key, value, *, attach=False):
     rt = _runtime.current()
     if rt and span.is_recording():
         shape = {
@@ -33,11 +69,23 @@ def content(span, key, value):
             ai.GEN_AI_OUTPUT_MESSAGES: "output-messages",
             ai.GEN_AI_SYSTEM_INSTRUCTIONS: "system-instructions",
         }.get(key)
+        budget = span_budget(span, rt.policy)
+        markers = attach and shape is None
         encoded = rt.policy.encode(
-            value, shape=shape, budget=span_budget(span, rt.policy, shape)
+            value,
+            shape=shape,
+            budget=budget if shape or markers else None,
+            markers=markers,
         )
-        if encoded is not None:
-            safe(span.set_attribute, key, encoded)
+        if encoded is None:
+            return
+        if shape is None:
+            found = {}
+            if markers:
+                carried = _carried(_ATTACHMENTS.get(span, {}))
+                encoded, found = resolve_markers(encoded, budget, carried)
+            _record_attachments(span, key, found)
+        safe(span.set_attribute, key, encoded)
 
 
 _CONTENT = {
@@ -56,7 +104,7 @@ _TRACE = (
     | {"test_case_id"}
     | set(confident.TRACE_ENTITY_FIELDS)
 )
-_SPAN = _CONTENT | {"name", "metric_collection"}
+_SPAN = _CONTENT | {"name", "metric_collection", "audio"}
 _WRITES = WeakKeyDictionary()
 _ENTITY_KEYS = {
     "thread": frozenset(("id", "tags", "metadata")),
@@ -79,6 +127,14 @@ def validate(values, allowed):
     unknown = set(values) - allowed
     if unknown:
         raise TypeError("Unknown tracing fields: " + ", ".join(sorted(unknown)))
+    if "audio" in values:
+        audio = values["audio"]
+        if (
+            type(audio) is not Media
+            or not (audio.mime_type or "").startswith(AUDIO_MIME_PREFIX)
+            or audio.is_remote
+        ):
+            raise TypeError("audio must be a Media of local or inline audio/* content")
     for entity, accepted in _ENTITY_KEYS.items():
         value = values.get(entity)
         if value is None:
@@ -167,9 +223,12 @@ def fields(span, values, *, scope="trace", only_unset=False):
             or attr in _WRITES.get(span, ())
         ):
             continue
-        if key in _CONTENT:
+        if key == "audio":
             _WRITES.setdefault(span, set()).add(attr)
-            content(span, attr, value)
+            _audio(span, attr, value)
+        elif key in _CONTENT:
+            _WRITES.setdefault(span, set()).add(attr)
+            content(span, attr, value, attach=True)
         elif key == "tags":
             if type(value) in (list, tuple) and all(type(v) is str for v in value):
                 safe(span.set_attribute, attr, value[:128])

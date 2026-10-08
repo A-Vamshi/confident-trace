@@ -9,6 +9,7 @@ from opentelemetry.util.types import Attributes
 
 from ._attributes import Integration as Integration
 from ._bootstrap import init as init
+from ._core.media import Media as Media
 from ._core.runtime import SEMCONV_VERSION as SEMCONV_VERSION
 from ._types import CustomerFields as CustomerFields
 from ._types import ThreadFields as ThreadFields
@@ -70,6 +71,7 @@ def span(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,
@@ -99,6 +101,7 @@ def span(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,
@@ -128,6 +131,7 @@ def span(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,
@@ -163,6 +167,7 @@ def span(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,
@@ -192,6 +197,7 @@ def update_span(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     model: str = ...,
     provider: str = ...,
     input_token_count: int = ...,
@@ -211,6 +217,7 @@ def update_trace(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,
@@ -245,6 +252,7 @@ def turn(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,
@@ -270,6 +278,7 @@ def turn(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,
@@ -293,6 +302,7 @@ def trace_context(
     tools_called: list[dict[str, object]] | None = ...,
     expected_tools: list[dict[str, object]] | None = ...,
     metric_collection: str = ...,
+    audio: Media = ...,
     tags: list[str] = ...,
     environment: str = ...,
     user_id: str = ...,

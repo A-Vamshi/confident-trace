@@ -66,6 +66,11 @@ SPAN_INPUT: Final = "confident.span.input"
 SPAN_OUTPUT: Final = "confident.span.output"
 SPAN_CONTENT_TRUNCATED: Final = "confident.span.content_truncated"
 
+# Media named by markers in this span's content fields, keyed by marker id.
+SPAN_ATTACHMENTS: Final = "confident.span.attachments"
+SPAN_AUDIO: Final = "confident.span.audio"
+TRACE_AUDIO: Final = "confident.trace.audio"
+
 # Public update_trace keyword names map explicitly to owned attributes.
 TRACE_FIELDS = MappingProxyType(
     {
@@ -113,12 +118,14 @@ CONTENT_FIELDS = frozenset(
 )
 SPAN_FIELDS = {key: f"confident.span.{key}" for key in CONTENT_FIELDS}
 SPAN_FIELDS["metric_collection"] = "confident.span.metric_collection"
+SPAN_FIELDS["audio"] = SPAN_AUDIO
 TRACE_FIELDS = MappingProxyType(
     {
         **TRACE_FIELDS,
         **{key: f"confident.trace.{key}" for key in CONTENT_FIELDS},
         "test_case_id": "confident.trace.test_case_id",
         "metric_collection": "confident.trace.metric_collection",
+        "audio": TRACE_AUDIO,
     }
 )
 
