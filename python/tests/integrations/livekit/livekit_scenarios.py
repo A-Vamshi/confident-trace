@@ -386,7 +386,15 @@ def test_call_recording_upload_skips_tls_verification_when_asked(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     for value in ("TRUE", "true"):
         monkeypatch.setenv("CONFIDENT_OTEL_TLS_SKIP_VERIFY", value)
-        _post("https://collector.invalid/v1/call-recordings", {}, b"audio", [])
+        runtime = ct.init(instrumentations=())
+        _post(
+            "https://collector.invalid/v1/call-recordings",
+            {},
+            b"audio",
+            [],
+            runtime.tls_skip_verify,
+        )
+        ct.shutdown()
     verified, unverified = contexts
     assert verified is None
     assert unverified.verify_mode == ssl.CERT_NONE

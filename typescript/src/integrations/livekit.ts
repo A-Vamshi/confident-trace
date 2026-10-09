@@ -4,7 +4,6 @@ import type { IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { context, diag, trace } from '@opentelemetry/api';
 import type { Span } from '@opentelemetry/api';
-import { tlsSkipVerify } from '@/config/resolve';
 import { isRoutedSpan } from '@/runtime/scopes';
 import { state } from '@/runtime/state';
 
@@ -38,13 +37,15 @@ const ALLOW_PII_ENV_VAR = 'LIVEKIT_TELEMETRY_ALLOW_PII';
 const FALSY = new Set(['0', 'false', 'no', 'off']);
 
 function recordingEndpoint():
-  { url: string; headers: Record<string, string> } | undefined {
+  | { url: string; headers: Record<string, string>; tlsSkipVerify: boolean }
+  | undefined {
   const target = state.otlpHttpExport;
   if (!target?.endpoint.endsWith(SPAN_BATCH_PATH)) return undefined;
   return {
     url:
       target.endpoint.slice(0, -SPAN_BATCH_PATH.length) + CALL_RECORDING_PATH,
     headers: target.headers,
+    tlsSkipVerify: target.tlsSkipVerify,
   };
 }
 
@@ -57,11 +58,12 @@ function post(
   url: string,
   headers: Record<string, string>,
   body: Buffer,
+  tlsSkipVerify: boolean,
 ): Promise<boolean> {
   const options = {
     method: 'POST',
     headers: { ...headers, 'content-length': String(body.length) },
-    rejectUnauthorized: !tlsSkipVerify(),
+    rejectUnauthorized: !tlsSkipVerify,
     signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   };
   return new Promise((resolve, reject) => {
@@ -112,6 +114,7 @@ export async function uploadCallRecording(
       `${target.url}?${query}`,
       { ...target.headers, 'content-type': 'audio/ogg' },
       await readFile(path),
+      target.tlsSkipVerify,
     );
     if (!uploaded) diag.warn('LiveKit call recording upload failed');
   } catch {

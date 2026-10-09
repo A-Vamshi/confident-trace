@@ -255,7 +255,8 @@ def test_payloads_are_compressed_unless_opted_out(monkeypatch):
 
 
 @pytest.mark.parametrize("value", [None, "TRUE", "1", "true"])
-def test_tls_verification_is_skipped_only_for_true(monkeypatch, value):
+@pytest.mark.parametrize("explicit", [None, False, True])
+def test_tls_verification_is_skipped_only_for_true(monkeypatch, value, explicit):
     import requests
 
     ct.shutdown()
@@ -263,7 +264,10 @@ def test_tls_verification_is_skipped_only_for_true(monkeypatch, value):
         monkeypatch.delenv("CONFIDENT_OTEL_TLS_SKIP_VERIFY", raising=False)
     else:
         monkeypatch.setenv("CONFIDENT_OTEL_TLS_SKIP_VERIFY", value)
-    rt = ct.init(instrumentations=())
+    rt = ct.init(instrumentations=(), tls_skip_verify=explicit)
+    expected = explicit if explicit is not None else value == "true"
+    assert rt.tls_skip_verify is expected
+    monkeypatch.setenv("CONFIDENT_OTEL_TLS_SKIP_VERIFY", str(not expected).lower())
     sessions = [
         rt.processor.delegate.span_exporter._session,
         rt.processor.delegate.factory("project-key")._session,
@@ -277,7 +281,7 @@ def test_tls_verification_is_skipped_only_for_true(monkeypatch, value):
     )
     for session in sessions:
         session.post("https://otel.confident-ai.com/v1/traces", verify=True)
-    assert sent == [value != "true"] * 2
+    assert sent == [not expected] * 2
     assert sessions[0] is not sessions[1]
 
 

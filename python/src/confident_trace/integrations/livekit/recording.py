@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 
 from opentelemetry import trace
 
-from ..._core.runtime import log, tls_skip_verify
+from ..._core.runtime import log
 
 # About what the upload bound carries at 50 Mbps, roughly 25 minutes of call.
 MAX_RECORDING_BYTES = 18 * 1024 * 1024
@@ -66,8 +66,8 @@ def _read(path):
         return recording.read()
 
 
-def _ssl_context():
-    if not tls_skip_verify():
+def _ssl_context(skip_verify):
+    if not skip_verify:
         return None
     context = ssl.create_default_context()
     context.check_hostname = False
@@ -75,11 +75,11 @@ def _ssl_context():
     return context
 
 
-def _post(url, headers, body, result):
+def _post(url, headers, body, result, skip_verify=False):
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(
-            request, timeout=UPLOAD_TIMEOUT_SECONDS, context=_ssl_context()
+            request, timeout=UPLOAD_TIMEOUT_SECONDS, context=_ssl_context(skip_verify)
         ) as response:
             result.append(200 <= response.status < 300)
     except Exception:
@@ -116,6 +116,7 @@ async def _upload(runtime, ctx, trace_uuid):
                 {**headers, "content-type": "audio/ogg"},
                 body,
                 result,
+                runtime.tls_skip_verify,
             ),
             daemon=True,
         )

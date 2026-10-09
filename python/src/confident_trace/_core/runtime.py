@@ -50,8 +50,14 @@ def default_compression():
     return "none" if configured == "none" else "gzip"
 
 
-def tls_skip_verify():
-    return os.getenv("CONFIDENT_OTEL_TLS_SKIP_VERIFY") == "true"
+def resolve_tls_skip_verify(value):
+    if value is not None and type(value) is not bool:
+        raise TypeError("tls_skip_verify must be a boolean or None")
+    return (
+        value
+        if value is not None
+        else os.getenv("CONFIDENT_OTEL_TLS_SKIP_VERIFY") == "true"
+    )
 
 
 def unverified_session(endpoint):
@@ -141,6 +147,7 @@ class Runtime:
     bifrost_proxy_urls: tuple[str, ...] = ()
     truefoundry_proxy_urls: tuple[str, ...] = ()
 
+    tls_skip_verify: bool = False
     otlp_environment: dict[str, str] | None = field(default=None, repr=False)
     otlp_http_export: tuple[str, dict[str, str]] | None = field(
         default=None, repr=False
@@ -174,6 +181,7 @@ def init(
     headers: Mapping[str, str] | None = None,
     timeout=None,
     compression=None,
+    tls_skip_verify: bool | None = None,
     tracer_provider=None,
     exporter=None,
     project_exporter_factory=None,
@@ -207,6 +215,7 @@ def init(
         otlp_environment = None
         otlp_http_export = None
         try:
+            resolved_tls_skip_verify = resolve_tls_skip_verify(tls_skip_verify)
             if max_content_bytes < 64:
                 raise ValueError("max_content_bytes must be at least 64")
             if max_media_bytes < 0:
@@ -284,7 +293,7 @@ def init(
                             "gzip": grpc.Compression.Gzip,
                             "none": grpc.Compression.NoCompression,
                         }[selected_compression]
-                skip_verify = selected == "http/protobuf" and tls_skip_verify()
+                skip_verify = selected == "http/protobuf" and resolved_tls_skip_verify
 
                 def create_exporter(options):
                     if skip_verify:
@@ -334,6 +343,7 @@ def init(
                 processor,
                 otlp_environment=otlp_environment,
                 otlp_http_export=otlp_http_export,
+                tls_skip_verify=resolved_tls_skip_verify,
             )
             _runtime = runtime
             runtime.litellm_proxy_urls = tuple(litellm_proxy_urls)

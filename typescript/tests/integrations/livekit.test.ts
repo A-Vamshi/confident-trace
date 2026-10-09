@@ -393,35 +393,46 @@ it('skips recording registration without an active trace', async () => {
   }
 });
 
-it('skips TLS verification for the upload only when asked', async () => {
-  const sent: { rejectUnauthorized?: boolean }[] = [];
-  vi.doMock('node:https', () => ({
-    request: (_url: string, options: { rejectUnauthorized?: boolean }) => {
-      sent.push(options);
-      throw new Error('not sent');
-    },
-  }));
-  try {
-    const { callbacks } = await recordedCall(
-      { endpoint: 'https://collector.invalid/v1/traces', apiKey: 'key' },
-      {
-        audioRecordingPath: await recordingFile(),
-        audioRecordingStartedAt: 1788652800500,
+it.each([
+  [undefined, undefined, true],
+  ['TRUE', undefined, true],
+  ['true', undefined, false],
+  ['true', false, true],
+  ['false', true, false],
+] as const)(
+  'resolves recording TLS at init (env=%s, option=%s)',
+  async (env, explicit, verify) => {
+    const sent: { rejectUnauthorized?: boolean }[] = [];
+    vi.stubEnv('CONFIDENT_OTEL_TLS_SKIP_VERIFY', env);
+    vi.doMock('node:https', () => ({
+      request: (_url: string, options: { rejectUnauthorized?: boolean }) => {
+        sent.push(options);
+        throw new Error('not sent');
       },
-    );
-    for (const value of ['TRUE', 'true']) {
-      vi.stubEnv('CONFIDENT_OTEL_TLS_SKIP_VERIFY', value);
+    }));
+    try {
+      const { callbacks } = await recordedCall(
+        {
+          endpoint: 'https://collector.invalid/v1/traces',
+          apiKey: 'key',
+          ...(explicit === undefined ? {} : { tlsSkipVerify: explicit }),
+        },
+        {
+          audioRecordingPath: await recordingFile(),
+          audioRecordingStartedAt: 1788652800500,
+        },
+      );
+      vi.stubEnv('CONFIDENT_OTEL_TLS_SKIP_VERIFY', String(verify));
       await callbacks[0]!();
+      expect(sent.map((options) => options.rejectUnauthorized)).toEqual([
+        verify,
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.doUnmock('node:https');
     }
-    expect(sent.map((options) => options.rejectUnauthorized)).toEqual([
-      true,
-      false,
-    ]);
-  } finally {
-    vi.unstubAllEnvs();
-    vi.doUnmock('node:https');
-  }
-});
+  },
+);
 
 it('bounds a hung call recording upload', async () => {
   const edge = await receiver(10_000);
