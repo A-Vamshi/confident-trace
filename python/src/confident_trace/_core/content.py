@@ -10,7 +10,7 @@ from itertools import islice
 from typing import Any
 from weakref import WeakKeyDictionary
 
-from .media import MARKER, Media, registered
+from .media import AUDIO_MIME_PREFIX, MARKER, Media, registered
 
 MEDIA_TYPES = ("blob", "uri")
 MEDIA_OVERHEAD = 256
@@ -92,7 +92,8 @@ class ContentPolicy:
         budget: MediaBudget | None = None,
         markers: bool = False,
     ) -> str | None:
-        """`markers` writes each Media as its marker, for `resolve_markers` to attach."""
+        """`markers` writes images and PDFs as markers for `resolve_markers` to
+        attach, and audio as an inline `audio_value`."""
         if not self.enabled:
             return None
         try:
@@ -111,7 +112,9 @@ class ContentPolicy:
                 if type(item) is str:
                     return item[: self.max_bytes]
                 if type(item) is Media:
-                    return str(item) if markers else budget.part(item)
+                    if not markers:
+                        return budget.part(item)
+                    return audio_value(item, budget) if item.is_audio else str(item)
                 if type(item) in (list, tuple):
                     return [
                         clean(v, depth + 1) for v in islice(item, max(0, remaining[0]))
@@ -183,12 +186,27 @@ def valid_content(value, shape):
     return True
 
 
+def audio_value(media, budget):
+    attachment = budget.attachment(media)
+    if attachment is None:
+        return media.note()
+    return {"mimeType": media.mime_type, **attachment}
+
+
+def _is_audio_value(value):
+    mime_type = value.get("mimeType")
+    return type(mime_type) is str and mime_type.startswith(AUDIO_MIME_PREFIX)
+
+
 def media_length(value, depth=0):
     if depth > 8:
         return 0
     if type(value) is dict:
         if value.get("type") in MEDIA_TYPES:
             payload = value.get("content") or value.get("uri")
+            return (len(payload) if type(payload) is str else 0) + MEDIA_OVERHEAD
+        if _is_audio_value(value):
+            payload = value.get("dataBase64") or value.get("url")
             return (len(payload) if type(payload) is str else 0) + MEDIA_OVERHEAD
         return sum(media_length(v, depth + 1) for v in value.values())
     if type(value) in (list, tuple):

@@ -43,7 +43,7 @@ _MIME_BY_EXTENSION = {
 _PDF_MIME_TYPES = ("application/pdf", "application/x-pdf")
 AUDIO_MIME_PREFIX = "audio/"
 
-MARKER = re.compile(r"\[CONFIDENT:(?:IMAGE|PDF|AUDIO):([0-9a-f]{32})\]")
+MARKER = re.compile(r"\[CONFIDENT:(?:IMAGE|PDF):([0-9a-f]{32})\]")
 _NOTE_MIME = re.compile(r"^[a-z0-9.+-]+/[a-z0-9.+-]+$")
 
 _REGISTRY: WeakValueDictionary = WeakValueDictionary()
@@ -100,8 +100,6 @@ def _marker_type(mime_type):
         return "IMAGE"
     if mime_type in _PDF_MIME_TYPES:
         return "PDF"
-    if mime_type.startswith(AUDIO_MIME_PREFIX):
-        return "AUDIO"
     return None
 
 
@@ -120,8 +118,9 @@ def _is_base64(value):
 class Media:
     """One non-text payload, read only when a part or attachment is built.
 
-    Formatting one as text (`str(media)`, an f-string) yields a marker that a
-    traced field can carry anywhere in its value.
+    Formatting an image or PDF as text (`str(media)`, an f-string) yields a
+    marker that a traced field can carry anywhere in its value. Audio is not
+    formatted into text: as a value it becomes `{mimeType, dataBase64 | url}`.
     """
 
     __slots__ = (
@@ -211,6 +210,12 @@ class Media:
     @property
     def is_inline(self):
         return self._data is not None or self._encoded is not None
+
+    @property
+    def is_audio(self):
+        return type(self.mime_type) is str and self.mime_type.startswith(
+            AUDIO_MIME_PREFIX
+        )
 
     @property
     def is_remote(self):

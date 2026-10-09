@@ -20,7 +20,6 @@ from .. import _attributes as confident
 from .._semconv import genai_v1_37_0 as ai
 from . import runtime as _runtime
 from .content import resolve_markers, span_budget
-from .media import AUDIO_MIME_PREFIX, Media
 from .safety import safe
 from .scopes import _DEFER_TRACE_CONTEXT, _TRACE_CONTEXT, _Scope, suppressed
 
@@ -43,22 +42,6 @@ def _record_attachments(span, key, found):
         confident.SPAN_ATTACHMENTS,
         json.dumps(_carried(by_key), separators=(",", ":")),
     )
-
-
-def _audio(span, key, media):
-    rt = _runtime.current()
-    if not (rt and rt.policy.enabled and span.is_recording()):
-        return
-    marker, found = resolve_markers(
-        str(media),
-        span_budget(span, rt.policy),
-        _carried(_ATTACHMENTS.get(span, {})),
-    )
-    _record_attachments(span, key, found)
-    if found:
-        safe(span.set_attribute, key, marker)
-    else:
-        _runtime.log.debug("Audio over the media budget or unreadable was not attached")
 
 
 def content(span, key, value, *, attach=False):
@@ -104,7 +87,7 @@ _TRACE = (
     | {"test_case_id"}
     | set(confident.TRACE_ENTITY_FIELDS)
 )
-_SPAN = _CONTENT | {"name", "metric_collection", "audio"}
+_SPAN = _CONTENT | {"name", "metric_collection"}
 _WRITES = WeakKeyDictionary()
 _ENTITY_KEYS = {
     "thread": frozenset(("id", "tags", "metadata")),
@@ -127,14 +110,6 @@ def validate(values, allowed):
     unknown = set(values) - allowed
     if unknown:
         raise TypeError("Unknown tracing fields: " + ", ".join(sorted(unknown)))
-    if "audio" in values:
-        audio = values["audio"]
-        if (
-            type(audio) is not Media
-            or not (audio.mime_type or "").startswith(AUDIO_MIME_PREFIX)
-            or audio.is_remote
-        ):
-            raise TypeError("audio must be a Media of local or inline audio/* content")
     for entity, accepted in _ENTITY_KEYS.items():
         value = values.get(entity)
         if value is None:
@@ -223,10 +198,7 @@ def fields(span, values, *, scope="trace", only_unset=False):
             or attr in _WRITES.get(span, ())
         ):
             continue
-        if key == "audio":
-            _WRITES.setdefault(span, set()).add(attr)
-            _audio(span, attr, value)
-        elif key in _CONTENT:
+        if key in _CONTENT:
             _WRITES.setdefault(span, set()).add(attr)
             content(span, attr, value, attach=True)
         elif key == "tags":
