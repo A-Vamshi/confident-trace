@@ -240,8 +240,9 @@ function recordAttachments(
 }
 /**
  * Write one content attribute. `attach` is for values the application supplied:
- * media in them travels as markers plus attachments. Captured values keep media
- * as omitted parts, so an integration's copy never sends its bytes twice.
+ * images and PDFs in them travel as markers plus attachments, and audio inline.
+ * Captured values keep media as omitted parts, so an integration's copy never
+ * sends its bytes twice.
  */
 function putContent(
   span: Span,

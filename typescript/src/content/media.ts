@@ -111,7 +111,7 @@ export function supportedMedia(mimeType: string | undefined): boolean {
   );
 }
 
-export function attachableMedia(mimeType: string | undefined): boolean {
+function attachableMedia(mimeType: string | undefined): boolean {
   return (
     supportedMedia(mimeType) ||
     (typeof mimeType === 'string' && mimeType.startsWith(AUDIO_MIME_PREFIX))
