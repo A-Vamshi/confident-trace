@@ -19,7 +19,6 @@ import {
   resolveMarkers,
   spanMediaBudget,
 } from '@/content/policy';
-import { AUDIO_MIME_PREFIX, Media } from '@/content/media';
 import type { MediaAttachment } from '@/content/media';
 import type { ContentOptions } from '@/content/types';
 import { isDisabled } from '@/config/resolve';
@@ -58,8 +57,6 @@ export interface SpanFields {
   expectedOutput?: unknown;
   toolsCalled?: readonly Record<string, unknown>[] | null;
   expectedTools?: readonly Record<string, unknown>[] | null;
-  /** One local or inline audio file, kept beside input and output. */
-  audio?: Media;
 }
 export interface TraceFields extends SpanFields {
   thread?: ThreadFields;
@@ -116,14 +113,10 @@ const traceKeys: Record<string, string> = {
 const scalarKeys: Record<string, string> = {
   metricCollection: 'metric_collection',
 };
-const mediaKeys: Record<string, string> = {
-  audio: 'audio',
-};
 const spanFields = new Set([
   'name',
   ...Object.keys(contentKeys),
   ...Object.keys(scalarKeys),
-  ...Object.keys(mediaKeys),
 ]);
 const traceFields = new Set([
   ...spanFields,
@@ -168,17 +161,6 @@ function validate(options: object, allowed: Set<string>): void {
     typeof options.name !== 'string'
   )
     throw new TypeError('Span name must be a string');
-  const audio = (options as SpanFields).audio;
-  // The receiver stores the file itself, so a remote reference can't fill it.
-  if (
-    audio !== undefined &&
-    (!(audio instanceof Media) ||
-      !audio.mimeType?.startsWith(AUDIO_MIME_PREFIX) ||
-      audio.isRemote)
-  )
-    throw new TypeError(
-      'audio must be a Media of local or inline audio/* content',
-    );
 }
 function role(options: SpanOptions): SpanType {
   const value =
@@ -280,22 +262,6 @@ function putContent(
   recordAttachments(span, key, resolved.found);
   span.setAttribute(key, resolved.encoded);
 }
-/** Write an audio field: its marker, with the bytes as the span's attachment. */
-function putAudio(
-  span: Span,
-  key: string,
-  media: Media,
-  contentPolicy: ContentPolicy,
-): void {
-  if (!span.isRecording() || !contentPolicy.enabled) return;
-  const { encoded, found } = resolveMarkers(
-    String(media),
-    spanMediaBudget(span, contentPolicy),
-    carriedAttachments(span),
-  );
-  recordAttachments(span, key, found);
-  if (Object.keys(found).length > 0) span.setAttribute(key, encoded);
-}
 function apply(
   span: Span,
   fields: SpanFields | TraceFields,
@@ -314,7 +280,7 @@ function apply(
               attr === `confident.trace.${key}_id` ||
               attr.startsWith(`confident.trace.${key}.`),
           );
-        const attr = `confident.${scope}.${contentKeys[key] ?? scalarKeys[key] ?? mediaKeys[key] ?? traceKeys[key]}`;
+        const attr = `confident.${scope}.${contentKeys[key] ?? scalarKeys[key] ?? traceKeys[key]}`;
         return !Object.hasOwn(attrs, attr) && !writes.get(span)?.has(attr);
       }),
     );
@@ -330,7 +296,6 @@ function apply(
     const suffix =
       contentKeys[key] ??
       scalarKeys[key] ??
-      mediaKeys[key] ??
       (scope === 'trace' ? traceKeys[key] : undefined);
     if (!suffix) continue;
     const attribute = `confident.${scope}.${suffix}`;
@@ -338,8 +303,6 @@ function apply(
     safe(() => {
       if (contentKeys[key])
         putContent(span, attribute, value, contentPolicy, true);
-      else if (mediaKeys[key] && value instanceof Media)
-        putAudio(span, attribute, value, contentPolicy);
       else if (
         key === 'tags' &&
         Array.isArray(value) &&

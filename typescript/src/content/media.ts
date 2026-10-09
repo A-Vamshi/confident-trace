@@ -40,7 +40,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 const PDF_MIME_TYPES = ['application/pdf', 'application/x-pdf'];
 export const AUDIO_MIME_PREFIX = 'audio/';
 
-export const MEDIA_MARKER = /\[CONFIDENT:(?:IMAGE|PDF|AUDIO):([0-9a-f]{32})\]/g;
+export const MEDIA_MARKER = /\[CONFIDENT:(?:IMAGE|PDF):([0-9a-f]{32})\]/g;
 const NOTE_MIME = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/;
 
 const registry = new Map<string, WeakRef<Media>>();
@@ -122,7 +122,6 @@ function markerType(mimeType: string | undefined): string | undefined {
   if (typeof mimeType !== 'string') return undefined;
   if (mimeType.startsWith('image/')) return 'IMAGE';
   if (PDF_MIME_TYPES.includes(mimeType)) return 'PDF';
-  if (mimeType.startsWith(AUDIO_MIME_PREFIX)) return 'AUDIO';
   return undefined;
 }
 
@@ -136,8 +135,9 @@ export interface MediaOptions {
 /**
  * One non-text payload, read only when a part or attachment is built.
  *
- * Formatting one as text (`String(media)`, a template literal) yields a marker
- * that a traced field can carry anywhere in its value.
+ * Formatting an image or PDF as text (`String(media)`, a template literal)
+ * yields a marker that a traced field can carry anywhere in its value. Audio is
+ * not formatted into text: as a value it becomes `{mimeType, dataBase64 | url}`.
  */
 export class Media {
   readonly mimeType: string | undefined;
@@ -208,6 +208,10 @@ export class Media {
 
   get isInline(): boolean {
     return this.#data !== undefined || this.#encoded !== undefined;
+  }
+
+  get isAudio(): boolean {
+    return this.mimeType?.startsWith(AUDIO_MIME_PREFIX) ?? false;
   }
 
   get isRemote(): boolean {

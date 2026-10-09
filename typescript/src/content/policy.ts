@@ -1,6 +1,11 @@
 import { types } from 'node:util';
 import { normalizeFrameworkOutput } from '@/content/normalize';
-import { MEDIA_MARKER, Media, registered } from '@/content/media';
+import {
+  AUDIO_MIME_PREFIX,
+  MEDIA_MARKER,
+  Media,
+  registered,
+} from '@/content/media';
 import type { MediaAttachment, MediaPart } from '@/content/media';
 import type { ContentOptions } from '@/content/types';
 import * as S from '@/semconv/generated';
@@ -59,6 +64,13 @@ function mediaLength(value: unknown, depth = 0): number {
     const payload = record.content ?? record.uri;
     return (typeof payload === 'string' ? payload.length : 0) + MEDIA_OVERHEAD;
   }
+  if (
+    typeof record.mimeType === 'string' &&
+    record.mimeType.startsWith(AUDIO_MIME_PREFIX)
+  ) {
+    const payload = record.dataBase64 ?? record.url;
+    return (typeof payload === 'string' ? payload.length : 0) + MEDIA_OVERHEAD;
+  }
   return Object.values(record).reduce<number>(
     (total, item) => total + mediaLength(item, depth + 1),
     0,
@@ -67,6 +79,13 @@ function mediaLength(value: unknown, depth = 0): number {
 
 type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+function audioValue(media: Media, budget: MediaBudget): JsonValue {
+  const attachment = budget.attachment(media);
+  return attachment === undefined
+    ? media.note()
+    : { mimeType: media.mimeType!, ...attachment };
+}
 
 const spanBudgets = new WeakMap<object, MediaBudget>();
 
@@ -174,8 +193,10 @@ export class ContentPolicy {
         if (typeof item === 'string') return item.slice(0, this.maxBytes);
         if (typeof item !== 'object' || types.isProxy(item))
           return '[unsupported]';
-        if (item instanceof Media)
-          return markers ? String(item) : (budget.part(item) as JsonValue);
+        if (item instanceof Media) {
+          if (!markers) return budget.part(item) as JsonValue;
+          return item.isAudio ? audioValue(item, budget) : String(item);
+        }
         if (ancestors.has(item)) return '[truncated]';
         const array = Array.isArray(item);
         const prototype = Object.getPrototypeOf(item);
