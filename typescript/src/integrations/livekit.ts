@@ -1,6 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
+import type { IncomingMessage } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { context, diag, trace } from '@opentelemetry/api';
 import type { Span } from '@opentelemetry/api';
+import { tlsSkipVerify } from '@/config/resolve';
 import { isRoutedSpan } from '@/runtime/scopes';
 import { state } from '@/runtime/state';
 
@@ -49,6 +53,30 @@ function piiWithheld(): boolean {
   return raw !== undefined && FALSY.has(raw.trim().toLowerCase());
 }
 
+function post(
+  url: string,
+  headers: Record<string, string>,
+  body: Buffer,
+): Promise<boolean> {
+  const options = {
+    method: 'POST',
+    headers: { ...headers, 'content-length': String(body.length) },
+    rejectUnauthorized: !tlsSkipVerify(),
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+  };
+  return new Promise((resolve, reject) => {
+    const onResponse = (response: IncomingMessage) => {
+      response.resume();
+      const status = response.statusCode ?? 0;
+      resolve(status >= 200 && status < 300);
+    };
+    const request = url.startsWith('https:')
+      ? httpsRequest(url, options, onResponse)
+      : httpRequest(url, options, onResponse);
+    request.on('error', reject).end(body);
+  });
+}
+
 type SessionReport = {
   audioRecordingPath?: string;
   audioRecordingStartedAt?: number;
@@ -80,13 +108,12 @@ export async function uploadCallRecording(
       traceUuid,
       startedAt: String(Math.round(startedAt)),
     });
-    const response = await fetch(`${target.url}?${query}`, {
-      method: 'POST',
-      headers: { ...target.headers, 'content-type': 'audio/ogg' },
-      body: await readFile(path),
-      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
-    });
-    if (!response.ok) diag.warn('LiveKit call recording upload failed');
+    const uploaded = await post(
+      `${target.url}?${query}`,
+      { ...target.headers, 'content-type': 'audio/ogg' },
+      await readFile(path),
+    );
+    if (!uploaded) diag.warn('LiveKit call recording upload failed');
   } catch {
     diag.warn('LiveKit call recording upload failed or timed out');
   }

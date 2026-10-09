@@ -5,9 +5,12 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import re
 import threading
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from opentelemetry import trace
 from opentelemetry.sdk import environment_variables as otel_env
@@ -45,6 +48,27 @@ def default_compression():
         os.getenv(otel_env.OTEL_EXPORTER_OTLP_COMPRESSION, ""),
     )
     return "none" if configured == "none" else "gzip"
+
+
+def tls_skip_verify():
+    return os.getenv("CONFIDENT_OTEL_TLS_SKIP_VERIFY") == "true"
+
+
+def unverified_session(endpoint):
+    import requests
+    from urllib3.exceptions import InsecureRequestWarning
+
+    class UnverifiedSession(requests.Session):
+        def request(self, *args, **kwargs):
+            return super().request(*args, **{**kwargs, "verify": False})
+
+    warnings.filterwarnings(
+        "ignore",
+        message="Unverified HTTPS request is being made to host "
+        f"'{re.escape(urlparse(endpoint).hostname or '')}'",
+        category=InsecureRequestWarning,
+    )
+    return UnverifiedSession()
 
 
 class OwnedProcessor(SpanProcessor):
@@ -260,9 +284,19 @@ def init(
                             "gzip": grpc.Compression.Gzip,
                             "none": grpc.Compression.NoCompression,
                         }[selected_compression]
+                skip_verify = selected == "http/protobuf" and tls_skip_verify()
+
+                def create_exporter(options):
+                    if skip_verify:
+                        options = {
+                            **options,
+                            "session": unverified_session(options["endpoint"]),
+                        }
+                    return BoundedSpanExporter(OTLPSpanExporter(**options))
+
                 # Unspecified TLS, timeout and endpoint settings are resolved by
                 # the standard exporter, including signal precedence.
-                exporter = BoundedSpanExporter(OTLPSpanExporter(**kwargs))
+                exporter = create_exporter(kwargs)
                 otlp_environment = safe(
                     child_environment,
                     selected,
@@ -281,7 +315,7 @@ def init(
                                 "x-confident-api-key": project_key,
                             },
                         }
-                        return BoundedSpanExporter(OTLPSpanExporter(**project_kwargs))
+                        return create_exporter(project_kwargs)
 
             processor = OwnedProcessor(
                 RoutingProcessor(

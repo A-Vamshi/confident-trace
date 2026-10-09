@@ -10,6 +10,9 @@ export function isDisabled(): boolean {
     sdkDisabled() || Boolean(context.active().getValue(requestSuppressionKey))
   );
 }
+export function tlsSkipVerify(): boolean {
+  return process.env.CONFIDENT_OTEL_TLS_SKIP_VERIFY === 'true';
+}
 
 export function resolveExportOptions(
   options: ExportOptions,

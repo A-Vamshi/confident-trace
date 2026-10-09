@@ -1,4 +1,5 @@
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
+import { tlsSkipVerify } from '@/config/resolve';
 import type { ResolvedExportOptions } from '@/config/types';
 
 export function createHttpExporter(
@@ -9,6 +10,9 @@ export function createHttpExporter(
     ...(options.endpoint !== undefined ? { url: options.endpoint } : {}),
     ...(options.timeoutMillis !== undefined
       ? { timeoutMillis: options.timeoutMillis }
+      : {}),
+    ...(tlsSkipVerify()
+      ? { httpAgentOptions: { keepAlive: true, rejectUnauthorized: false } }
       : {}),
     ...(options.compression !== undefined
       ? {

@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import ssl
 import threading
 import urllib.request
 import weakref
@@ -9,7 +10,7 @@ from urllib.parse import urlencode
 
 from opentelemetry import trace
 
-from ..._core.runtime import log
+from ..._core.runtime import log, tls_skip_verify
 
 # About what the upload bound carries at 50 Mbps, roughly 25 minutes of call.
 MAX_RECORDING_BYTES = 18 * 1024 * 1024
@@ -65,11 +66,20 @@ def _read(path):
         return recording.read()
 
 
+def _ssl_context():
+    if not tls_skip_verify():
+        return None
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
 def _post(url, headers, body, result):
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(
-            request, timeout=UPLOAD_TIMEOUT_SECONDS
+            request, timeout=UPLOAD_TIMEOUT_SECONDS, context=_ssl_context()
         ) as response:
             result.append(200 <= response.status < 300)
     except Exception:
