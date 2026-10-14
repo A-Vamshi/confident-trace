@@ -34,6 +34,7 @@ import { ConfidentLangChainCallbackHandler } from '@/integrations/langchain';
 import { ConfidentLangGraphCallbackHandler } from '@/integrations/langgraph';
 import { ContentPolicy } from '@/content/policy';
 import { state } from '@/runtime/state';
+import { withSpan } from '@/spans/index';
 
 let exporter: InMemorySpanExporter;
 let provider: NodeTracerProvider;
@@ -232,6 +233,71 @@ it('works with LangChain createAgent and LangGraph checkpoint resume', async () 
   const count = spans().length;
   handler.close();
   expect(spans()).toHaveLength(count);
+});
+it('treats LangGraph interrupts as control flow and records the interrupt payload', async () => {
+  const handler = new ConfidentLangGraphCallbackHandler();
+  const schema = Annotation.Root({
+    first: Annotation<string>,
+    second: Annotation<string>,
+  });
+  const graph = new StateGraph(schema)
+    .addNode('ask', () => {
+      const first = withSpan(
+        { name: 'ask-user' },
+        () => interrupt('question') as string,
+      );
+      const second = withSpan(
+        { name: 'ask-again' },
+        () => interrupt('again') as string,
+      );
+      return { first, second };
+    })
+    .addEdge(START, 'ask')
+    .addEdge('ask', END)
+    .compile({ checkpointer: new MemorySaver() });
+  const config = {
+    callbacks: [handler],
+    configurable: { thread_id: 'interrupts' },
+  };
+  await graph.invoke({ first: '', second: '' }, config);
+  await graph.invoke(new Command({ resume: 'yes' }), config);
+  expect(
+    await graph.invoke(new Command({ resume: 'sure' }), config),
+  ).toMatchObject({ first: 'yes', second: 'sure' });
+  expect(spans().filter((s) => s.name === 'ask-user')).toHaveLength(3);
+  expect(spans().filter((s) => s.name === 'ask-again')).toHaveLength(2);
+  expect(spans().every((s) => s.status.code !== SpanStatusCode.ERROR)).toBe(
+    true,
+  );
+  const asked = spans().filter((s) => s.name === 'ask');
+  expect(
+    JSON.parse(String(asked[0]!.attributes['confident.span.output'])),
+  ).toEqual({ __interrupt__: ['question'] });
+  handler.close();
+});
+it('still marks real failures inside LangGraph nodes as errors', async () => {
+  const handler = new ConfidentLangGraphCallbackHandler();
+  const schema = Annotation.Root({ value: Annotation<string> });
+  const failure = new Error('boom');
+  const graph = new StateGraph(schema)
+    .addNode('fail', () =>
+      withSpan({ name: 'work' }, () => {
+        throw failure;
+      }),
+    )
+    .addEdge(START, 'fail')
+    .addEdge('fail', END)
+    .compile();
+  await expect(
+    graph.invoke({ value: '' }, { callbacks: [handler] }),
+  ).rejects.toBe(failure);
+  expect(spans().find((s) => s.name === 'work')?.status.code).toBe(
+    SpanStatusCode.ERROR,
+  );
+  expect(spans().find((s) => s.name === 'fail')?.status.code).toBe(
+    SpanStatusCode.ERROR,
+  );
+  handler.close();
 });
 it('keeps errors content-free and respects opt-out, redaction, bounds and disabled tracing', async () => {
   state.policy = new ContentPolicy({ captureContent: false });
