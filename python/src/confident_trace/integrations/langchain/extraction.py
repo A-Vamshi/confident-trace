@@ -132,6 +132,15 @@ def request(op, kind, value, options):
             op.span.set_attribute(ai.GEN_AI_TOOL_CALL_ID, call_id)
 
 
+def interrupts(error):
+    pending = error.args[0] if error.args else ()
+    return {
+        "__interrupt__": [
+            generic(getattr(item, "value", item)) for item in tuple(pending)[:128]
+        ]
+    }
+
+
 def response(op, kind, value):
     if kind not in ("chat", "text_completion"):
         op.output(generic(value))

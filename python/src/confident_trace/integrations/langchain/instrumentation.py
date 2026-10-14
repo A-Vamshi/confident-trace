@@ -5,6 +5,7 @@ import importlib
 import wrapt
 
 from ..._core.safety import safe
+from ..._core.spans import register_control_flow
 from .callback import Bridge
 from .execution import config_wrapper, frame_wrapper, model_wrapper
 
@@ -53,7 +54,7 @@ def instrument(rt):
             )
         try:
             graph = importlib.import_module("langgraph._internal._runnable")
-            from langgraph.errors import GraphBubbleUp
+            from langgraph.errors import GraphBubbleUp, GraphInterrupt
 
             from langgraph.pregel import Pregel
 
@@ -61,6 +62,8 @@ def instrument(rt):
                                  ("stream", "stream"), ("astream", "astream")):
                 patch(Pregel, method, frame_wrapper(bridge, ("chain", "invoke_agent"), mode, graph=True), undo)
             bridge.control_flow += (GraphBubbleUp,)
+            undo.append(register_control_flow(GraphBubbleUp))
+            bridge.interrupts = (GraphInterrupt,)
             patch(graph, "set_config_context", config_wrapper(bridge), undo)
             # Python 3.10 cannot run a coroutine in an explicit Context. These
             # invocation scopes also cover nodes whose callable disables tracing.

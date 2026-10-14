@@ -25,6 +25,17 @@ from .scopes import _DEFER_TRACE_CONTEXT, _TRACE_CONTEXT, _Scope, suppressed
 
 _ENTRY = context.create_key(confident.ENTRY_CONTEXT_KEY)
 _ATTACHMENTS: WeakKeyDictionary = WeakKeyDictionary()
+_CONTROL_FLOW = [GeneratorExit, StopIteration, StopAsyncIteration]
+
+
+def register_control_flow(error_type):
+    _CONTROL_FLOW.append(error_type)
+
+    def unregister():
+        if error_type in _CONTROL_FLOW:
+            _CONTROL_FLOW.remove(error_type)
+
+    return unregister
 
 
 def _carried(by_key):
@@ -438,9 +449,7 @@ class Operation:
         if self.ended:
             return
         self.ended = True
-        if error is not None and not isinstance(
-            error, (GeneratorExit, StopIteration, StopAsyncIteration)
-        ):
+        if error is not None and not isinstance(error, tuple(_CONTROL_FLOW)):
             # Exception messages/tracebacks can contain credentials and content.
             safe(self.span.set_attribute, ai.ERROR_TYPE, type(error).__name__)
             safe(self.span.set_status, Status(StatusCode.ERROR, type(error).__name__))

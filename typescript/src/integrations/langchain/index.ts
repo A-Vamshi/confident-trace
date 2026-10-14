@@ -1,4 +1,4 @@
-import { frameworkOutputs } from '@/runtime/state';
+import { frameworkOutputs, state } from '@/runtime/state';
 import { CallbackRuns } from '@/integrations/callback-runs';
 import type { CallbackOptions } from '@/integrations/callback-runs';
 import { frameworkMessages, safely } from '@/integrations/framework';
@@ -47,6 +47,17 @@ function messages(values: unknown): unknown {
     return normalized;
   });
 }
+function bubbleUp(error: unknown): boolean {
+  try {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      Reflect.get(error, 'is_bubble_up') === true
+    );
+  } catch {
+    return false;
+  }
+}
 function nameOf(
   serialized: unknown,
   name: string | undefined,
@@ -71,6 +82,7 @@ export class ConfidentLangChainCallbackHandler {
       graph ? S.INTEGRATIONS.langgraph : S.INTEGRATIONS.langchain,
       options,
     );
+    state.controlFlow.add(bubbleUp);
   }
   copy(): this {
     return this;
@@ -113,8 +125,17 @@ export class ConfidentLangChainCallbackHandler {
   };
   handleChainEnd = (output: unknown, runId: string): void =>
     this.finish(output, runId);
-  handleChainError = (_error: unknown, runId: string): void =>
-    this.runs.end(runId, true);
+  handleChainError = (error: unknown, runId: string): void => {
+    if (!bubbleUp(error)) return this.runs.end(runId, true);
+    const interrupts = get(error, 'interrupts');
+    if (Array.isArray(interrupts))
+      safely(() =>
+        this.runs.content(runId, 'output', {
+          __interrupt__: list(interrupts).map((item) => get(item, 'value')),
+        }),
+      );
+    this.runs.end(runId);
+  };
   handleToolStart = (
     tool: unknown,
     input: string,

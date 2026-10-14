@@ -359,7 +359,84 @@ def test_checkpoint_interrupt_resume_and_separate_turns(tracing):
     assert {s.attributes[ai.GEN_AI_CONVERSATION_ID] for s in roots} == {
         "same-conversation"
     }
+    asked = named(exporter, "ask")
+    assert json.loads(asked[0].attributes["confident.span.output"]) == {
+        "__interrupt__": ["question"]
+    }
+    assert json.loads(asked[1].attributes["confident.span.output"]) == {
+        "answer": "yes"
+    }
     assert not bridge.runs
+
+
+def test_user_spans_around_interrupt_are_not_errors(tracing):
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, StateGraph
+    from langgraph.types import Command, interrupt
+
+    provider, exporter, _, bridge = tracing
+
+    @ct.span(name="decorated-ask")
+    def decorated():
+        return interrupt("decorated question")
+
+    def ask(state):
+        with ct.span("ask-user"):
+            first = interrupt("question")
+        return {"answer": first, "second": decorated()}
+
+    graph = (
+        StateGraph(dict)
+        .add_node("ask", ask)
+        .add_edge(START, "ask")
+        .add_edge("ask", END)
+        .compile(checkpointer=InMemorySaver())
+    )
+    config = {"configurable": {"thread_id": "user-spans"}}
+    assert "__interrupt__" in graph.invoke({}, config)
+    assert "__interrupt__" in graph.invoke(Command(resume="yes"), config)
+    assert graph.invoke(Command(resume="again"), config) == {
+        "answer": "yes",
+        "second": "again",
+    }
+    assert len(named(exporter, "ask-user")) == 3
+    assert len(named(exporter, "decorated-ask")) == 2
+    assert all(s.status.status_code.name != "ERROR" for s in spans(exporter))
+    assert not bridge.runs
+
+
+def test_user_span_errors_inside_graph_nodes_are_still_errors(tracing):
+    from langgraph.graph import END, START, StateGraph
+
+    provider, exporter, _, bridge = tracing
+
+    def fail(state):
+        with ct.span("work"):
+            raise ValueError("boom")
+
+    graph = (
+        StateGraph(dict)
+        .add_node("fail", fail)
+        .add_edge(START, "fail")
+        .add_edge("fail", END)
+        .compile()
+    )
+    with pytest.raises(ValueError):
+        graph.invoke({})
+    (work,) = named(exporter, "work")
+    assert work.status.status_code.name == "ERROR"
+    assert work.attributes[ai.ERROR_TYPE] == "ValueError"
+    assert not bridge.runs
+
+
+def test_interrupt_control_flow_is_unregistered_on_shutdown(tracing):
+    from langgraph.errors import GraphBubbleUp
+
+    from confident_trace._core import spans as core_spans
+
+    assert GraphBubbleUp in core_spans._CONTROL_FLOW
+    ct.shutdown()
+    assert GraphBubbleUp not in core_spans._CONTROL_FLOW
 
 
 def test_provider_deduplication_and_direct_calls_in_tools(tracing):

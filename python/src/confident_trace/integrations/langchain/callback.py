@@ -48,6 +48,7 @@ class Bridge(BaseCallbackHandler):
         self.claimed = set()
         self.closed = False
         self.control_flow = (GeneratorExit,)
+        self.interrupts = ()
         _BRIDGES.add(self)
 
     def enabled(self):
@@ -117,6 +118,8 @@ class Bridge(BaseCallbackHandler):
                     safe(run.operation.input, extraction.generic(inputs), replace_automatic=True)
                 if error is None:
                     safe(extraction.response, run.operation, run.kind, value)
+                elif isinstance(error, self.interrupts):
+                    safe(run.operation.output, extraction.interrupts(error))
             finally:
                 run.operation.end(
                     None if isinstance(error, self.control_flow) else error
