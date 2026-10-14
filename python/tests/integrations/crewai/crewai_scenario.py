@@ -641,7 +641,8 @@ async def resume():
 
     class Reviewer:
         def request_feedback(self, context, flow):
-            raise HumanFeedbackPending(context)
+            with ct.span("ask reviewer"):
+                raise HumanFeedbackPending(context)
 
     class Review(Flow):
         @start()
@@ -661,6 +662,10 @@ async def resume():
     first = spans(exporter)
     assert (
         next(s for s in first if s.name == "node draft").status.status_code.name
+        == "UNSET"
+    )
+    assert (
+        next(s for s in first if s.name == "ask reviewer").status.status_code.name
         == "UNSET"
     )
     with ct.span("resumed", thread_id="review"):
