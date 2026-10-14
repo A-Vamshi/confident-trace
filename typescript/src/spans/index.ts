@@ -580,6 +580,16 @@ function start(
     return;
   }
 }
+function failure(error: unknown): boolean {
+  for (const test of state.controlFlow) {
+    try {
+      if (test(error)) return false;
+    } catch {
+      continue;
+    }
+  }
+  return true;
+}
 function execute<T>(
   op: Operation | undefined,
   fn: () => T,
@@ -592,7 +602,7 @@ function execute<T>(
     return value;
   };
   const failed = (error: unknown): never => {
-    op.end(true);
+    op.end(failure(error));
     throw error;
   };
   try {
@@ -699,7 +709,7 @@ function generator(
   };
   const failed = (error: unknown): never => {
     ended = true;
-    op?.end(true);
+    op?.end(failure(error));
     throw error;
   };
   let busy = false;

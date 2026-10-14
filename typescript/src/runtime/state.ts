@@ -44,9 +44,11 @@ export const state: {
   };
   /** Native framework scopes whose spans receive an integration label. */
   integrationScopes: Map<string, string>;
+  controlFlow: Set<(error: unknown) => boolean>;
   auto: AutomaticState;
 } = {
   integrationScopes: new Map(),
+  controlFlow: new Set(),
   auto: {
     registered: false,
     selected: new Set(instrumentationNames),
