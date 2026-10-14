@@ -359,6 +359,13 @@ def test_checkpoint_interrupt_resume_and_separate_turns(tracing):
     assert {s.attributes[ai.GEN_AI_CONVERSATION_ID] for s in roots} == {
         "same-conversation"
     }
+    asked = named(exporter, "ask")
+    assert json.loads(asked[0].attributes["confident.span.output"]) == {
+        "__interrupt__": ["question"]
+    }
+    assert json.loads(asked[1].attributes["confident.span.output"]) == {
+        "answer": "yes"
+    }
     assert not bridge.runs
 
 
