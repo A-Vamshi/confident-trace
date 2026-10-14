@@ -10,6 +10,7 @@ import importlib
 import wrapt
 
 from ..._core.safety import safe
+from ..._core.spans import register_control_flow
 from .execution import State, call_context, execution_wrapper
 
 TARGETS = (
@@ -53,7 +54,7 @@ def instrument(rt):
         return []
     state = State(rt)
     rt._crewai_state = state
-    undo = []
+    undo = [register_control_flow(error) for error in state.control_flow]
     for module, class_name, method, kind in TARGETS:
         safe(patch, module, class_name, method, kind, state, undo)
     return [*undo, state.close]
