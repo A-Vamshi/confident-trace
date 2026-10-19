@@ -154,6 +154,18 @@ validation.
 
 The SDKs export traces; they do not provide a metrics or logs pipeline.
 
+## Agent skills
+
+The `confident-tracing` and `confident-otel` skills teach coding agents to
+instrument an app with this SDK or with raw OpenTelemetry. They live in
+[`confident-ai/confident-skills`](https://github.com/confident-ai/confident-skills),
+packaged as the `confident-trace` plugin for Claude Code, Cursor, and Codex:
+
+```
+/plugin marketplace add confident-ai/confident-skills
+/plugin install confident-trace@confident-skills
+```
+
 ## Repository
 
 | Directory | Contents |

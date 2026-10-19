@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Agent skills moved
+
+- Move the `confident-tracing` and `confident-otel` skills, and the Claude Code,
+  Cursor, and Codex plugin manifests, to
+  [`confident-ai/confident-skills`](https://github.com/confident-ai/confident-skills).
+  Replace `/plugin install confident-trace@confident-trace-plugins` with
+  `/plugin install confident-trace@confident-skills`, and
+  `npx skills add confident-ai/confident-trace` with
+  `npx skills add confident-ai/confident-skills`.
+
 ## Unreleased — LiveKit call recordings
 
 - Upload LiveKit's own call recording when a recorded call ends (Python and
