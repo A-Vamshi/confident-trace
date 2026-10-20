@@ -13,6 +13,8 @@ from typing import Final
 GEN_AI_PREFIX: Final = "gen_ai."
 OPERATION_NAME: Final = "gen_ai.operation.name"
 INFERENCE_OPERATIONS: Final = frozenset({"generate_content", "chat"})
+# Pipecat 1.13.0 writes the system prompt here on its llm spans.
+SYSTEM_INSTRUCTIONS: Final = "gen_ai.system_instructions"
 
 # OpenInference bridge spans use their own vocabulary, preserved on export.
 OPENINFERENCE_KIND = "openinference.span.kind"

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Pipecat
+
+- Trace Pipecat pipelines (Python): `init()` turns on Pipecat's tracing for every
+  `PipelineWorker` unless it passes `enable_tracing=False` or `"pipecat"` is
+  left out of `instrumentations`. Each call is one trace of conversation, turn,
+  STT, LLM and TTS spans labelled `Pipecat`, with the model call counted once
+  and a bounded flush when the pipeline finishes. `capture_content=False` and
+  `redact` also apply to the conversation content Pipecat writes on its spans.
+
 ## Unreleased — Agent skills moved
 
 - Move the `confident-tracing` and `confident-otel` skills, and the Claude Code,

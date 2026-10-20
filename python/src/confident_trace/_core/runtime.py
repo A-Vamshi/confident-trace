@@ -22,7 +22,7 @@ from .. import _attributes as confident
 from .._semconv.genai_v1_37_0 import SCHEMA_URL
 from .._semconv.genai_v1_37_0 import SEMCONV_VERSION as SEMCONV_VERSION
 from .batching import BoundedSpanExporter
-from .content import ContentPolicy
+from .content import ContentPolicy, apply_native_policy
 from .otlp import child_environment
 from .safety import safe
 from .scopes import RoutingProcessor, suppressed
@@ -88,6 +88,9 @@ class OwnedProcessor(SpanProcessor):
         self.delegate = delegate
         self.closed = False
         self.integration_scopes: dict[str, confident.Integration] = {}
+        # Native content attribute keys by scope, governed by `policy` at export.
+        self.content_scopes: dict[str, frozenset[str]] = {}
+        self.policy: ContentPolicy | None = None
 
     def on_start(self, span, parent_context=None):
         if self.closed:
@@ -113,6 +116,10 @@ class OwnedProcessor(SpanProcessor):
     def on_end(self, span):
         if not self.closed:
             try:
+                scope = span.instrumentation_scope
+                keys = self.content_scopes.get(scope.name) if scope else None
+                if keys and self.policy is not None:
+                    span = apply_native_policy(span, keys, self.policy)
                 self.delegate.on_end(span)
             except Exception:
                 log.debug("Span processor failed")
@@ -326,6 +333,9 @@ def init(
                         }
                         return create_exporter(project_kwargs)
 
+            policy = ContentPolicy(
+                capture_content, max_content_bytes, redact, max_media_bytes
+            )
             processor = OwnedProcessor(
                 RoutingProcessor(
                     exporter,
@@ -334,12 +344,11 @@ def init(
                     export_non_ai_spans=export_non_ai_spans,
                 )
             )
+            processor.policy = policy
             provider.add_span_processor(processor)
             runtime = Runtime(
                 provider,
-                ContentPolicy(
-                    capture_content, max_content_bytes, redact, max_media_bytes
-                ),
+                policy,
                 processor,
                 otlp_environment=otlp_environment,
                 otlp_http_export=otlp_http_export,

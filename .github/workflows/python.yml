@@ -30,6 +30,8 @@ jobs:
             name: "Microsoft Agent Framework"
           - suite: livekit
             name: "LiveKit"
+          - suite: pipecat
+            name: "Pipecat"
           - suite: openai-agents
             name: "OpenAI Agents"
           - suite: claude-agent

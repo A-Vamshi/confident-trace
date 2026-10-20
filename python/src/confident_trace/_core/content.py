@@ -12,6 +12,8 @@ from weakref import WeakKeyDictionary
 
 from .media import AUDIO_MIME_PREFIX, MARKER, Media, registered
 
+_PRIMITIVES = (str, bool, int, float)
+
 MEDIA_TYPES = ("blob", "uri")
 MEDIA_OVERHEAD = 256
 
@@ -140,6 +142,66 @@ class ContentPolicy:
         except Exception:
             # A failing redactor must never leak the unredacted value.
             return None
+
+
+def _native_value(value, redact):
+    """Redact a native attribute value; None means omit it.
+
+    JSON text is parsed first so the redactor sees the same structured values it
+    sees on Confident spans, and the result is written back as JSON text.
+    """
+    try:
+        parsed = None
+        if type(value) is str and value[:1] in ("[", "{"):
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                parsed = None
+        if type(parsed) in (list, dict):
+            return json.dumps(redact(parsed), ensure_ascii=False)
+        result = redact(value)
+        if type(result) in _PRIMITIVES:
+            return result
+        if type(result) in (list, tuple) and all(type(item) is str for item in result):
+            return tuple(result)
+        return json.dumps(result, ensure_ascii=False)
+    except Exception:
+        # A failing redactor must never leak the unredacted value.
+        return None
+
+
+def apply_native_policy(span, keys, policy):
+    """Apply capture_content and redaction to a native framework's content keys.
+
+    Ended spans are immutable, so a changed span is exported as a copy.
+    """
+    attributes = span.attributes or {}
+    present = [key for key in keys if key in attributes]
+    if not present or (policy.enabled and policy.redact is None):
+        return span
+    from opentelemetry.sdk.trace import ReadableSpan
+
+    attributes = dict(attributes)
+    for key in present:
+        value = attributes.pop(key)
+        if policy.enabled:
+            value = _native_value(value, policy.redact)
+            if value is not None:
+                attributes[key] = value
+    return ReadableSpan(
+        name=span.name,
+        context=span.context,
+        parent=span.parent,
+        resource=span.resource,
+        attributes=attributes,
+        events=span.events,
+        links=span.links,
+        kind=span.kind,
+        status=span.status,
+        start_time=span.start_time,
+        end_time=span.end_time,
+        instrumentation_scope=span.instrumentation_scope,
+    )
 
 
 def valid_content(value, shape):

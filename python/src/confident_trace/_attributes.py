@@ -60,6 +60,7 @@ class Integration(str, Enum):
     AGNO = "Agno"
     SMOLAGENTS = "Smolagents"
     LIVEKIT = "LiveKit"
+    PIPECAT = "Pipecat"
 
 
 SPAN_INPUT: Final = "confident.span.input"

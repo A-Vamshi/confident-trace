@@ -1,7 +1,5 @@
 """Native LiveKit Agents telemetry interoperability."""
 
-import asyncio
-import threading
 import weakref
 from importlib.metadata import version
 
@@ -10,6 +8,7 @@ from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 
 from ..._attributes import Integration
 from ..._core.runtime import log
+from .._shared.flush import bounded_flush
 from .._shared.lifecycle import register_native_inference
 from .._shared.patching import install_targets
 from ._constants import INFERENCE_SPANS, SCOPE_NAME
@@ -55,27 +54,9 @@ def instrument(runtime):
             try:
                 return await wrapped(*args, **kwargs)
             finally:
-                if runtime.active and runtime.processor:
-                    # LiveKit ends the job root before _on_cleanup. Its ordinary
-                    # shutdown callbacks run earlier and concurrently.
-                    result = []
-
-                    def flush():
-                        try:
-                            result.append(runtime.processor.force_flush(5000))
-                        except Exception:
-                            result.append(False)
-
-                    # A broken exporter must not keep the worker alive through
-                    # asyncio's executor shutdown; only the bounded join uses it.
-                    try:
-                        worker = threading.Thread(target=flush, daemon=True)
-                        worker.start()
-                        await asyncio.to_thread(worker.join, 5)
-                        if not result or not result[0]:
-                            log.debug("LiveKit final span flush failed or timed out")
-                    except Exception:
-                        log.debug("LiveKit final span flush failed or timed out")
+                # LiveKit ends the job root before _on_cleanup. Its ordinary
+                # shutdown callbacks run earlier and concurrently.
+                await bounded_flush(runtime, "LiveKit")
 
         return cleanup
 

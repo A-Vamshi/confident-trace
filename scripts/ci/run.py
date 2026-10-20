@@ -133,6 +133,8 @@ def python_case(suite, runtime, profile, deps, work, report, env, log):
     required = list(REQUIRED.get(suite, []))
     if suite == "langchain" and runtime != "3.10":
         required.append("deepagents")
+    if suite == "pipecat" and runtime == "3.10":
+        required = []  # Pipecat requires Python 3.11+; its tests skip.
     if profile == "mega":
         required = ["claude-agent-sdk", "langchain-openai", "pydantic-ai-slim"]
     if required:

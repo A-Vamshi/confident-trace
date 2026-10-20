@@ -36,7 +36,7 @@ requests and requested tool calls, not the execution of arbitrary tool functions
 
 The source must already have instrumentation enabled and emit through the shared
 SDK TracerProvider (or explicitly use the provider passed to `init`). `init()`
-enables Pydantic AI and Microsoft Agent Framework as described below. Strands,
+enables Pydantic AI, Microsoft Agent Framework and Pipecat tracing as described below. Strands,
 Google ADK and LiveKit Agents already emit native spans. Other frameworks must be enabled by the
 application. Spans from an unrelated provider are not collected automatically.
 
@@ -396,6 +396,65 @@ recorded are traced as before. `capture_content=False` or
 (roughly 25 minutes of call) are skipped with a warning.
 The recording is attached to the room's thread, so a call placed under a custom
 thread ID gets its audio on a separate thread named after the room.
+
+## Pipecat (native OTel)
+
+Call `init()` before the pipeline is built, normally at the top of the bot file.
+Pipecat's tracing is opt-in per pipeline. Once `init()` has run, every
+`PipelineWorker` (or deprecated `PipelineTask`) traces unless it passes
+`enable_tracing=False`. Leaving `"pipecat"` out of `init(instrumentations=...)`
+leaves Pipecat's own default (off) alone. You do not need Pipecat's
+`setup_tracing()` or an OTLP exporter.
+
+```python
+import confident_trace as ct
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.pipeline.worker import PipelineWorker
+from pipecat.workers.runner import WorkerRunner
+
+ct.init()
+
+async def run_bot(transport):
+    pipeline = Pipeline([transport.input(), stt, user_aggregator, llm, tts,
+                         transport.output(), assistant_aggregator])
+    worker = PipelineWorker(pipeline, conversation_id="call-123")
+    runner = WorkerRunner()
+    await runner.add_workers(worker)
+    await runner.run()
+```
+
+Each call becomes one trace: a `conversation` span (with `conversation.id`),
+a `turn` span per user and bot exchange, and `stt`, `llm` and `tts` spans inside
+each turn, all labelled `Pipecat`. Pipecat's `llm` span records each model call
+with its model and token usage, so the provider span is skipped and cost is
+counted once. Pass `PipelineParams(enable_metrics=True)` to also get
+time-to-first-byte on service spans. Static context known before the call
+(customer, environment) goes in `PipelineWorker(additional_span_attributes={...})`,
+which Pipecat sets on the `conversation` span.
+
+When the pipeline finishes, Confident flushes after Pipecat ends the conversation
+span, with a five-second budget, so bots that exit as soon as the call ends
+(Pipecat Cloud, serverless) still deliver the trace. A failed export does not
+stop cleanup.
+
+Pipecat creates its spans on the global provider. If none is set, `init()`
+installs ours (or the one passed as `tracer_provider=`). A global provider
+configured before `init()` without passing it in is left alone, and its Pipecat
+spans do not reach Confident. Calling Pipecat's `setup_tracing()` after `init()`
+has no effect, because OpenTelemetry keeps the first global provider.
+
+Pipecat writes the conversation into its own attributes (`input` and `output`
+on `llm`, `transcript` on `stt`, `text` on `tts`, plus system instructions and
+realtime tool arguments and results). Confident applies `capture_content` and
+the redactor to these at export: `capture_content=False` removes them and keeps
+the spans, timing and token usage; `redact` receives each value (JSON text is
+parsed first and written back as JSON), and a value whose redactor raises is
+omitted. `max_content_bytes` does not truncate Pipecat's values.
+`enable_tracing=False` removes a pipeline's Pipecat spans entirely.
+The backend does not display these attributes yet.
+Tests use pipecat-ai 1.13.0 (Python 3.11+).
+
+Call audio is not uploaded yet; see the [proposed design](pipecat-audio.md).
 
 ## OpenAI Agents SDK
 

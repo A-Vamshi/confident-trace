@@ -15,7 +15,7 @@ from suites import HOME, PROFILES, PYTHON, TYPESCRIPT, combinations, python_owne
 
 
 class GroupingTests(unittest.TestCase):
-    def test_workflows_have_exactly_30_stable_names(self):
+    def test_workflows_have_exactly_31_stable_names(self):
         import yaml
 
         shared = yaml.safe_load((ROOT / ".github/workflows/shared.yml").read_text())
@@ -34,7 +34,7 @@ class GroupingTests(unittest.TestCase):
                 {row["suite"]: row["name"] for row in matrix["include"]}, suites
             )
             total += len(matrix["include"])
-        self.assertEqual(total, 30)
+        self.assertEqual(total, 31)
 
     def test_all_original_compatibility_pairs_have_one_scheduled_owner(self):
         examples = [
@@ -51,6 +51,7 @@ class GroupingTests(unittest.TestCase):
                     "agentcore",
                     "microsoft",
                     "livekit",
+                    "pipecat",
                     "langchain",
                     "crewai",
                 )
@@ -80,8 +81,8 @@ class GroupingTests(unittest.TestCase):
             for test in examples:
                 owner = python_owner("python/tests/" + test, profile)
                 self.assertIn((runtime, profile, deps), combinations("python", owner))
-        self.assertEqual(len(combinations("python", "core")), 64)
-        self.assertEqual(len(combinations("python", "interop")), 65)
+        self.assertEqual(len(combinations("python", "core")), 72)
+        self.assertEqual(len(combinations("python", "interop")), 73)
         for suite in HOME:
             self.assertEqual(len(combinations("python", suite)), 8)
         self.assertEqual(len(PROFILES), 8)

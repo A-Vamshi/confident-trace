@@ -18,6 +18,7 @@ _MODULES = {
         "pydantic_ai",
         "strands",
         "livekit",
+        "pipecat",
         "microsoft_agent_framework",
         "litellm",
         "openrouter",
