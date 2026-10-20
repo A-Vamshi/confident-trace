@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — Pipecat transcripts
+
+- Document the Pipecat call transcript Confident AI now builds from `stt` and
+  `tts` spans: trace input and output, per-turn messages with latency and
+  interruptions, and thread evaluations held until the call ends.
+
 ## Unreleased — Pipecat
 
 - Trace Pipecat pipelines (Python): `init()` turns on Pipecat's tracing for every

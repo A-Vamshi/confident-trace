@@ -125,13 +125,13 @@ equivalent of `LIVEKIT_TELEMETRY_ALLOW_PII`.
 
 Recommendation: `capture_content` only for v1; add a switch if customers ask.
 
-### 7. Backend display
+### 7. Backend display (done)
 
-The players line turns up using LiveKit's turn spans. Pipecat has one `turn` span
-per exchange (user and bot together), and its text is in the plain
-`transcript`, `text`, `input` and `output` attributes. The backend needs a
-Pipecat mapping for the per-turn players and the transcript. Until then, the
-call player works, but turn players and transcript text may not show.
+Confident AI now builds a timed transcript from Pipecat's `stt` and `tts` spans,
+grouped by turn, and cuts each turn's audio from the call recording using those
+timings, the same way it does for LiveKit. Once the SDK uploads the recording,
+the call player and the per-turn players need no further backend work, as long
+as the format is `audio/ogg` (decision 1).
 
 ## Not planned
 

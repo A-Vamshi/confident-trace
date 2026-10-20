@@ -451,8 +451,16 @@ the spans, timing and token usage; `redact` receives each value (JSON text is
 parsed first and written back as JSON), and a value whose redactor raises is
 omitted. `max_content_bytes` does not truncate Pipecat's values.
 `enable_tracing=False` removes a pipeline's Pipecat spans entirely.
-The backend does not display these attributes yet.
 Tests use pipecat-ai 1.13.0 (Python 3.11+).
+
+Confident reads the call's transcript from these spans: what the caller said
+(`stt`) and what the bot spoke (`tts`), grouped by turn. The trace input is the
+conversation before the bot's last reply and the output is that reply; each
+`turn` span shows the caller's words and the bot's answer, with the turn's
+user-to-bot latency and whether the caller interrupted. Spans from one call
+arrive in several exports, so the transcript fills in as they do, and thread
+evaluations wait for the `conversation` span, which ends with the call.
+`capture_content=False` removes the transcript along with the content.
 
 Call audio is not uploaded yet; see the [proposed design](pipecat-audio.md).
 
