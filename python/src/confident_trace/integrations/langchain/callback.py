@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from langchain_core.callbacks import BaseCallbackHandler
 from opentelemetry import context, trace
 
-from ..._attributes import Integration
+from ..._attributes import SPAN_TYPE, Integration
 from ..._core import runtime
 from ..._core.safety import safe
 from ..._core.spans import Operation
@@ -76,6 +76,9 @@ class Bridge(BaseCallbackHandler):
                 attrs[ai.GEN_AI_OPERATION_NAME] = kind
             if kind == "execute_tool":
                 attrs[ai.GEN_AI_TOOL_NAME] = title
+            if kind == "retriever":
+                # GenAI 1.37.0 has no retrieval operation; mark it Confident's way.
+                attrs[SPAN_TYPE] = "retriever"
             # The token is local to this synchronous callback, never saved on a run.
             token = context.attach(
                 parent.operation.ctx if parent else context.get_current()
