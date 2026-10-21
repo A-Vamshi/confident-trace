@@ -52,6 +52,12 @@ def pipecat_environment():
         "test_redactor_rewrites_pipecat_content",
         "test_failing_redactor_omits_pipecat_content",
         "test_content_is_kept_by_default",
+        "test_call_recording_is_uploaded_to_the_conversation_trace",
+        "test_call_recording_is_uploaded_before_the_final_flush",
+        "test_call_recording_is_skipped",
+        "test_user_audio_handlers_keep_receiving_audio",
+        "test_call_recording_upload_is_bounded",
+        "test_buffered_audio_is_uploaded_as_one_recording",
     ],
 )
 def test_pipecat_scenario(scenario, pipecat_environment, tmp_path):

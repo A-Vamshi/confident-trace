@@ -1,5 +1,6 @@
 """One process per scenario: the global tracer provider never escapes it."""
 
+import gzip
 import json
 import time
 
@@ -317,10 +318,240 @@ async def test_content_is_kept_by_default():
 
 def test_shutdown_restores_pipecat():
     from pipecat.pipeline.worker import PipelineWorker
+    from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 
     init, cleanup = PipelineWorker.__init__, PipelineWorker._cleanup
+    setup, start = AudioBufferProcessor.setup, AudioBufferProcessor.start_recording
     ct.init(exporter=InMemorySpanExporter(), instrumentations=("pipecat",))
     assert PipelineWorker.__init__ is not init
+    assert AudioBufferProcessor.setup is not setup
     ct.shutdown()
     assert PipelineWorker.__init__ is init
     assert PipelineWorker._cleanup is cleanup
+    assert AudioBufferProcessor.setup is setup
+    assert AudioBufferProcessor.start_recording is start
+
+
+class Receiver:
+    """A local Confident edge that records span batches and call-recording uploads."""
+
+    def __init__(self, delay=0.0):
+        import http.server
+        import threading
+
+        received = self.received = []
+        paths = self.paths = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers["content-length"]))
+                if self.path.startswith("/v1/call-recordings"):
+                    time.sleep(delay)
+                    received.append(
+                        (
+                            self.path,
+                            {k.lower(): v for k, v in self.headers.items()},
+                            body,
+                        )
+                    )
+                    paths.append("recording")
+                else:
+                    if self.headers.get("content-encoding") == "gzip":
+                        body = gzip.decompress(body)
+                    paths.append(span_names(body))
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.endpoint = f"http://127.0.0.1:{self.server.server_port}/v1/traces"
+
+
+def span_names(body):
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+        ExportTraceServiceRequest,
+    )
+
+    request = ExportTraceServiceRequest()
+    request.ParseFromString(body)
+    return {
+        span.name: span.trace_id.hex()
+        for resource in request.resource_spans
+        for scope in resource.scope_spans
+        for span in scope.spans
+    }
+
+
+def tone(seconds=1, sample_rate=24000):
+    import numpy
+
+    samples = numpy.arange(seconds * sample_rate) / sample_rate
+    return (
+        (numpy.sin(samples * 2 * numpy.pi * 440) * 8000).astype(numpy.int16).tobytes()
+    )
+
+
+async def record_call(
+    *,
+    auto_start_recording=True,
+    with_recorder=True,
+    sample_rate=24000,
+    on_audio_data=None,
+    buffer_size=0,
+    **worker_kwargs,
+):
+    from pipecat.frames.frames import EndFrame, InputAudioRawFrame, OutputAudioRawFrame
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.worker import PipelineParams, PipelineWorker
+    from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
+    from pipecat.processors.frame_processor import FrameProcessor
+    from pipecat.workers.runner import WorkerRunner
+
+    audio = AudioBufferProcessor(
+        num_channels=2,
+        auto_start_recording=auto_start_recording,
+        buffer_size=buffer_size,
+    )
+    if on_audio_data is not None:
+        audio.add_event_handler("on_audio_data", on_audio_data)
+    processor = audio if with_recorder else FrameProcessor()
+    worker = PipelineWorker(
+        Pipeline([processor]),
+        params=PipelineParams(audio_out_sample_rate=sample_rate),
+        conversation_id="call-1",
+        **worker_kwargs,
+    )
+    chunk = tone(sample_rate=sample_rate)
+    frames = []
+    for _ in range(3):
+        frames.append(
+            InputAudioRawFrame(audio=chunk, sample_rate=sample_rate, num_channels=1)
+        )
+        frames.append(
+            OutputAudioRawFrame(audio=chunk, sample_rate=sample_rate, num_channels=1)
+        )
+    await worker.queue_frames([*frames, EndFrame()])
+    runner = WorkerRunner(handle_sigint=False)
+    await runner.add_workers(worker)
+    await runner.run()
+
+
+@pytest.mark.asyncio
+async def test_call_recording_is_uploaded_to_the_conversation_trace(tmp_path):
+    import soundfile
+
+    receiver = Receiver()
+    ct.init(endpoint=receiver.endpoint, api_key="key", instrumentations=("pipecat",))
+    before = time.time()
+    await record_call()
+    after = time.time()
+    [(path, headers, body)] = receiver.received
+    batches = [batch for batch in receiver.paths if batch != "recording"]
+    (trace_uuid,) = {b["conversation"] for b in batches if "conversation" in b}
+    query = path.split("?", 1)[1]
+    assert path.startswith("/v1/call-recordings?")
+    assert f"traceUuid={trace_uuid}" in query
+    started_at = int(query.split("startedAt=", 1)[1]) / 1000
+    assert before <= started_at <= after
+    assert headers["x-confident-api-key"] == "key"
+    assert headers["content-type"] == "audio/ogg"
+    recording = tmp_path / "call.ogg"
+    recording.write_bytes(body)
+    info = soundfile.info(recording)
+    assert (info.format, info.subtype, info.channels) == ("OGG", "OPUS", 2)
+    assert info.duration > 2.5
+    ct.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_call_recording_is_uploaded_before_the_final_flush():
+    receiver = Receiver()
+    ct.init(endpoint=receiver.endpoint, api_key="key", instrumentations=("pipecat",))
+    await record_call()
+    order = [
+        "recording" if batch == "recording" else "conversation" in batch
+        for batch in receiver.paths
+    ]
+    assert order.index("recording") < order.index(True)
+    ct.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        "not_started",
+        "no_recorder",
+        "content_off",
+        "tracing_off",
+        "pipecat_unselected",
+        "unsupported_sample_rate",
+    ],
+)
+async def test_call_recording_is_skipped(case):
+    receiver = Receiver()
+    ct.init(
+        endpoint=receiver.endpoint,
+        api_key="key",
+        instrumentations=() if case == "pipecat_unselected" else ("pipecat",),
+        capture_content=case != "content_off",
+    )
+    await record_call(
+        auto_start_recording=case != "not_started",
+        with_recorder=case != "no_recorder",
+        sample_rate=44100 if case == "unsupported_sample_rate" else 24000,
+        **({"enable_tracing": False} if case == "tracing_off" else {}),
+    )
+    assert receiver.received == []
+    ct.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_user_audio_handlers_keep_receiving_audio():
+    receiver = Receiver()
+    ct.init(endpoint=receiver.endpoint, api_key="key", instrumentations=("pipecat",))
+    delivered = []
+
+    async def on_audio_data(processor, audio, sample_rate, num_channels):
+        delivered.append((len(audio), sample_rate, num_channels))
+
+    await record_call(on_audio_data=on_audio_data)
+    [(size, sample_rate, num_channels)] = delivered
+    assert size >= 3 * 24000 * 2 * 2
+    assert (sample_rate, num_channels) == (24000, 2)
+    assert len(receiver.received) == 1
+    ct.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_call_recording_upload_is_bounded():
+    receiver = Receiver(delay=10)
+    ct.init(endpoint=receiver.endpoint, api_key="key", instrumentations=("pipecat",))
+    start = time.monotonic()
+    await record_call()
+    assert 2.5 < time.monotonic() - start < 6
+    ct.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_buffered_audio_is_uploaded_as_one_recording(tmp_path):
+    import soundfile
+
+    receiver = Receiver()
+    ct.init(endpoint=receiver.endpoint, api_key="key", instrumentations=("pipecat",))
+    delivered = []
+
+    async def on_audio_data(processor, audio, sample_rate, num_channels):
+        delivered.append(len(audio))
+
+    await record_call(on_audio_data=on_audio_data, buffer_size=24000 * 2)
+    assert len(delivered) > 1
+    [(_, _, body)] = receiver.received
+    recording = tmp_path / "call.ogg"
+    recording.write_bytes(body)
+    assert soundfile.info(recording).duration > 2.5
+    ct.shutdown()
