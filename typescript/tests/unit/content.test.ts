@@ -133,3 +133,19 @@ it('keeps twelve levels of nesting', () => {
     nest(13, '[truncated]'),
   );
 });
+it.each([0, 65, 2.5, Number.NaN])(
+  'rejects maxNestingDepth %s',
+  (maxNestingDepth) => {
+    expect(() => new ContentPolicy({ maxNestingDepth })).toThrow(
+      'maxNestingDepth must be an integer from 1 to 64',
+    );
+  },
+);
+it('keeps the configured nesting depth through withOptions', () => {
+  const policy = new ContentPolicy({ maxNestingDepth: 2 }).withOptions({
+    maxContentBytes: 128,
+  });
+  expect(policy.maxNestingDepth).toBe(2);
+  expect(policy.encode([['leaf']])).toBe('[["leaf"]]');
+  expect(policy.encode([[['leaf']]])).toBe('[[["[truncated]"]]]');
+});

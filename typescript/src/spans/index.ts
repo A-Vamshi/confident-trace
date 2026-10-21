@@ -188,6 +188,7 @@ function policy(
   return new ContentPolicy({
     captureContent: inherited?.enabled ?? true,
     maxContentBytes: options.maxContentBytes ?? inherited?.maxBytes ?? 16384,
+    ...(inherited ? { maxNestingDepth: inherited.maxNestingDepth } : {}),
     ...(options.redact ? { redact: options.redact } : {}),
   });
 }

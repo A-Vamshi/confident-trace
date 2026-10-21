@@ -26,7 +26,11 @@ import {
 } from '@opentelemetry/resources';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import type { Span, SpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { isDisabled, sdkDisabled } from '@/config/resolve';
+import {
+  isDisabled,
+  resolveMaxNestingDepth,
+  sdkDisabled,
+} from '@/config/resolve';
 import type { InitOptions } from '@/config/types';
 import { ContentPolicy } from '@/content/policy';
 import { withinBudget } from '@/runtime/lifecycle';
@@ -115,7 +119,10 @@ export function init(options: InitOptions = {}): TraceRuntime {
   let provider: NodeTracerProvider | undefined;
   let ownedContext: AsyncLocalStorageContextManager | undefined;
   try {
-    const policy = new ContentPolicy(options);
+    const policy = new ContentPolicy({
+      ...options,
+      maxNestingDepth: resolveMaxNestingDepth(options.maxNestingDepth),
+    });
     processor = createSpanProcessor(options);
     const resource = defaultResource()
       .merge(detectResources({ detectors: [envDetector] }))

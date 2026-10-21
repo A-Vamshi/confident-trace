@@ -1,5 +1,8 @@
 import { types } from 'node:util';
-import { normalizeFrameworkOutput } from '@/content/normalize';
+import {
+  MAX_NESTING_DEPTH,
+  normalizeFrameworkOutput,
+} from '@/content/normalize';
 import {
   AUDIO_MIME_PREFIX,
   MEDIA_MARKER,
@@ -52,11 +55,15 @@ export class MediaBudget {
   }
 }
 
-function mediaLength(value: unknown, depth = 0): number {
-  if (depth > 12 || !value || typeof value !== 'object') return 0;
+function mediaLength(
+  value: unknown,
+  maxDepth = MAX_NESTING_DEPTH,
+  depth = 0,
+): number {
+  if (depth > maxDepth || !value || typeof value !== 'object') return 0;
   if (Array.isArray(value))
     return value.reduce<number>(
-      (total, item) => total + mediaLength(item, depth + 1),
+      (total, item) => total + mediaLength(item, maxDepth, depth + 1),
       0,
     );
   const record = value as Record<string, unknown>;
@@ -72,7 +79,7 @@ function mediaLength(value: unknown, depth = 0): number {
     return (typeof payload === 'string' ? payload.length : 0) + MEDIA_OVERHEAD;
   }
   return Object.values(record).reduce<number>(
-    (total, item) => total + mediaLength(item, depth + 1),
+    (total, item) => total + mediaLength(item, maxDepth, depth + 1),
     0,
   );
 }
@@ -135,6 +142,7 @@ export class ContentPolicy {
   readonly maxBytes: number;
   readonly maxMediaBytes: number;
   readonly maxMediaTotalBytes: number;
+  readonly maxNestingDepth: number;
   private readonly redact: ContentOptions['redact'];
 
   constructor(options: ContentOptions = {}) {
@@ -142,6 +150,7 @@ export class ContentPolicy {
     this.maxBytes = options.maxContentBytes ?? 16384;
     this.maxMediaBytes = options.maxMediaBytes ?? 5242880;
     this.maxMediaTotalBytes = options.maxMediaTotalBytes ?? 16777216;
+    this.maxNestingDepth = options.maxNestingDepth ?? MAX_NESTING_DEPTH;
     this.redact = options.redact;
     if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes < 64) {
       throw new Error('maxContentBytes must be an integer of at least 64');
@@ -155,6 +164,13 @@ export class ContentPolicy {
     ) {
       throw new Error('maxMediaTotalBytes must be a non-negative integer');
     }
+    if (
+      !Number.isSafeInteger(this.maxNestingDepth) ||
+      this.maxNestingDepth < 1 ||
+      this.maxNestingDepth > 64
+    ) {
+      throw new Error('maxNestingDepth must be an integer from 1 to 64');
+    }
   }
 
   withOptions(options: ContentOptions): ContentPolicy {
@@ -163,6 +179,7 @@ export class ContentPolicy {
       maxContentBytes: this.maxBytes,
       maxMediaBytes: this.maxMediaBytes,
       maxMediaTotalBytes: this.maxMediaTotalBytes,
+      maxNestingDepth: this.maxNestingDepth,
       ...(this.redact ? { redact: this.redact } : {}),
       ...options,
     });
@@ -181,12 +198,13 @@ export class ContentPolicy {
   ): string | undefined {
     if (!this.enabled) return undefined;
     try {
-      const normalized = normalizeFrameworkOutput(value);
+      const normalized = normalizeFrameworkOutput(value, this.maxNestingDepth);
       const redacted = this.redact ? this.redact(normalized) : normalized;
       let remaining = Math.min(this.maxBytes, 1024);
       const ancestors = new Set<object>();
       const clean = (item: unknown, depth = 0): JsonValue => {
-        if (--remaining < 0 || depth > 12) return '[truncated]';
+        if (--remaining < 0 || depth > this.maxNestingDepth)
+          return '[truncated]';
         if (item === null || typeof item === 'boolean') return item;
         if (typeof item === 'number')
           return Number.isFinite(item) ? item : null;
@@ -237,7 +255,7 @@ export class ContentPolicy {
         }
       };
       const cleaned = clean(redacted);
-      const limit = this.maxBytes + mediaLength(cleaned);
+      const limit = this.maxBytes + mediaLength(cleaned, this.maxNestingDepth);
       const encoded = JSON.stringify(cleaned).replace(
         /[\u007f-\uffff]/g,
         (character) =>

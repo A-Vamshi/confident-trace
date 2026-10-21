@@ -1,6 +1,7 @@
 import { context } from '@opentelemetry/api';
 import { requestSuppressionKey } from '@/runtime/state';
 import type { ExportOptions, ResolvedExportOptions } from '@/config/types';
+import { MAX_NESTING_DEPTH } from '@/content/normalize';
 
 export function sdkDisabled(): boolean {
   return process.env.OTEL_SDK_DISABLED?.toLowerCase() === 'true';
@@ -9,6 +10,13 @@ export function isDisabled(): boolean {
   return (
     sdkDisabled() || Boolean(context.active().getValue(requestSuppressionKey))
   );
+}
+
+export function resolveMaxNestingDepth(value?: number): number {
+  if (value !== undefined) return value;
+  const configured = process.env.CONFIDENT_MAX_NESTING_DEPTH?.trim() ?? '';
+  const depth = /^\d+$/.test(configured) ? Number(configured) : NaN;
+  return depth >= 1 && depth <= 64 ? depth : MAX_NESTING_DEPTH;
 }
 
 export function resolveExportOptions(
