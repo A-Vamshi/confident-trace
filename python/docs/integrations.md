@@ -461,6 +461,10 @@ user-to-bot latency and whether the caller interrupted. Spans from one call
 arrive in several exports, so the transcript fills in as they do, and thread
 evaluations wait for the `conversation` span, which ends with the call.
 `capture_content=False` removes the transcript along with the content.
+With OpenAI Realtime or Gemini Live, the bot's side comes from the transcript on
+each spoken `llm_response` span, and `llm_tool_call` / `llm_tool_result` spans
+become tool spans. The session instructions Pipecat writes on `llm_setup`
+(`instructions` and `session.instructions`) are content too.
 
 Pipecat has no recorder of its own. When a pipeline includes Pipecat's
 `AudioBufferProcessor` and recording has started (`auto_start_recording=True` or
