@@ -511,3 +511,29 @@ it('records LangGraph Command and Send values as tagged objects', async () => {
   ).toBe(false);
   handler.close();
 });
+it('records Date values in LangGraph state as ISO strings', async () => {
+  const handler = new ConfidentLangGraphCallbackHandler();
+  const schema = Annotation.Root({
+    at: Annotation<Date>,
+    missing: Annotation<Date>,
+  });
+  await new StateGraph(schema)
+    .addNode('touch', () => ({ at: new Date(Date.UTC(2026, 0, 2)) }))
+    .addEdge(START, 'touch')
+    .addEdge('touch', END)
+    .compile()
+    .invoke(
+      { at: new Date(0), missing: new Date(Number.NaN) },
+      { callbacks: [handler] },
+    );
+  const root = spans().find((s) => s.name === 'LangGraph')!;
+  expect(JSON.parse(String(root.attributes['confident.span.input']))).toEqual({
+    at: '1970-01-01T00:00:00.000Z',
+    missing: null,
+  });
+  expect(JSON.parse(String(root.attributes['confident.span.output']))).toEqual({
+    at: '2026-01-02T00:00:00.000Z',
+    missing: null,
+  });
+  handler.close();
+});

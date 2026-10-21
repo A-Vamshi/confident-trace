@@ -57,6 +57,8 @@ function graphState(value: unknown, depth = 0): unknown {
     return value;
   if (Array.isArray(value))
     return list(value).map((item) => graphState(item, depth + 1));
+  if (value instanceof Date)
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
   const kind = get(value, 'lg_name');
   if (kind === 'Command') {
     const output: Record<string, unknown> = { type: 'command' };
