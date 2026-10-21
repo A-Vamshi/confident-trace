@@ -10,7 +10,13 @@ from ..._core.spans import content
 from ..._semconv import genai_v1_37_0 as ai
 from .._shared.extraction import media
 
+try:
+    from langgraph.types import Command, Send
+except ImportError:
+    Command = Send = ()
+
 _MEDIA_BLOCKS = {"image", "image_url", "file", "audio", "video"}
+_COMMAND_FIELDS = ("goto", "update", "resume", "graph")
 
 
 def mapping(value):
@@ -91,6 +97,21 @@ def generic(value, depth=0):
         return messages([value])
     if isinstance(value, Document):
         return {"page_content": value.page_content}  # Metadata can contain credentials.
+    if isinstance(value, Command):
+        result = {"type": "command"}
+        for key in _COMMAND_FIELDS:
+            item = getattr(value, key, None)
+            if item is not None and not (
+                type(item) in (list, tuple, dict) and not item
+            ):
+                result[key] = generic(item, depth + 1)
+        return result
+    if isinstance(value, Send):
+        return {
+            "type": "send",
+            "node": value.node,
+            "arg": generic(value.arg, depth + 1),
+        }
     if type(value) is dict:
         return {
             k: generic(v, depth + 1)
