@@ -918,3 +918,30 @@ def test_graph_integration_label_and_isolation(tracing):
         assert all(s.attributes.get('confident.span.integration') == expected for s in members)
         prompt = next(s for s in members if s.name == 'ChatPromptTemplate')
         assert '[unsupported]' not in prompt.attributes['confident.span.output']
+
+
+def test_graph_message_state_is_a_flat_message_list(tracing):
+    from langchain_core.messages import AIMessage, HumanMessage
+    from langgraph.graph import END, START, MessagesState, StateGraph
+
+    _, exporter, _, _ = tracing
+
+    class State(MessagesState):
+        step: int
+
+    graph = (
+        StateGraph(State)
+        .add_node("reply", lambda state: {"messages": [AIMessage("hello")], "step": 1})
+        .add_edge(START, "reply")
+        .add_edge("reply", END)
+        .compile()
+    )
+    graph.invoke({"messages": [HumanMessage("hi")], "step": 0})
+    root = named(exporter, "LangGraph")[0]
+    assert json.loads(root.attributes["confident.span.output"]) == {
+        "messages": [
+            {"role": "user", "parts": [{"type": "text", "content": "hi"}]},
+            {"role": "assistant", "parts": [{"type": "text", "content": "hello"}]},
+        ],
+        "step": 1,
+    }

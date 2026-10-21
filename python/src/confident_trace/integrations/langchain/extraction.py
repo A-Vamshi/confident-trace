@@ -98,7 +98,13 @@ def generic(value, depth=0):
             if type(k) is str
         }
     if type(value) in (list, tuple):
-        return [generic(v, depth + 1) for v in value[:128]]
+        result = []
+        for item in value[:128]:
+            if isinstance(item, BaseMessage):
+                result.extend(messages([item]))
+            else:
+                result.append(generic(item, depth + 1))
+        return result
     return value  # ContentPolicy rejects arbitrary objects without calling repr.
 
 
