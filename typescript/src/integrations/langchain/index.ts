@@ -53,7 +53,7 @@ function isEmptyList(value: unknown): boolean {
 }
 const commandFields = ['goto', 'update', 'resume', 'graph'];
 function graphState(value: unknown, depth = 0): unknown {
-  if (depth > 8 || !value || typeof value !== 'object' || types.isProxy(value))
+  if (depth > 12 || !value || typeof value !== 'object' || types.isProxy(value))
     return value;
   if (Array.isArray(value))
     return list(value).map((item) => graphState(item, depth + 1));

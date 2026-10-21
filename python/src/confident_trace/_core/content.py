@@ -105,7 +105,7 @@ class ContentPolicy:
 
             def clean(item, depth=0):
                 remaining[0] -= 1
-                if remaining[0] < 0 or depth > 8:
+                if remaining[0] < 0 or depth > 12:
                     return "[truncated]"
                 if item is None or type(item) in (bool, int):
                     return item
@@ -261,7 +261,7 @@ def _is_audio_value(value):
 
 
 def media_length(value, depth=0):
-    if depth > 8:
+    if depth > 12:
         return 0
     if type(value) is dict:
         if value.get("type") in MEDIA_TYPES:

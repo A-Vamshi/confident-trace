@@ -53,7 +53,7 @@ export class MediaBudget {
 }
 
 function mediaLength(value: unknown, depth = 0): number {
-  if (depth > 8 || !value || typeof value !== 'object') return 0;
+  if (depth > 12 || !value || typeof value !== 'object') return 0;
   if (Array.isArray(value))
     return value.reduce<number>(
       (total, item) => total + mediaLength(item, depth + 1),
@@ -186,7 +186,7 @@ export class ContentPolicy {
       let remaining = Math.min(this.maxBytes, 1024);
       const ancestors = new Set<object>();
       const clean = (item: unknown, depth = 0): JsonValue => {
-        if (--remaining < 0 || depth > 8) return '[truncated]';
+        if (--remaining < 0 || depth > 12) return '[truncated]';
         if (item === null || typeof item === 'boolean') return item;
         if (typeof item === 'number')
           return Number.isFinite(item) ? item : null;

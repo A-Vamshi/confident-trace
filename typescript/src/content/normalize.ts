@@ -13,7 +13,7 @@ export function normalizeFrameworkOutput(value: unknown): unknown {
       !item ||
       typeof item !== 'object' ||
       types.isProxy(item) ||
-      depth > 8 ||
+      depth > 12 ||
       --remaining < 0
     )
       return item;

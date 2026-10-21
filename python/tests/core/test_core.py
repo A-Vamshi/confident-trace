@@ -125,6 +125,17 @@ def test_content_policy():
     assert ContentPolicy(enabled=False).encode("secret") is None
 
 
+def test_content_policy_keeps_twelve_levels_of_nesting():
+    def nest(levels, leaf="leaf"):
+        value = leaf
+        for _ in range(levels):
+            value = [value]
+        return value
+
+    assert json.loads(ContentPolicy().encode(nest(12))) == nest(12)
+    assert json.loads(ContentPolicy().encode(nest(13))) == nest(13, "[truncated]")
+
+
 def test_idempotence_and_shared_provider_ownership(telemetry):
     provider, exporter = telemetry
     assert ct.init().provider is provider

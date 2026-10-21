@@ -125,3 +125,11 @@ it('normalizes nested framework results before redaction without invoking getter
   expect(getter).not.toHaveBeenCalled();
   expect(input.messages[0]).toBe(message);
 });
+it('keeps twelve levels of nesting', () => {
+  const nest = (levels: number, leaf: unknown = 'leaf'): unknown =>
+    levels === 0 ? leaf : [nest(levels - 1, leaf)];
+  expect(JSON.parse(new ContentPolicy().encode(nest(12))!)).toEqual(nest(12));
+  expect(JSON.parse(new ContentPolicy().encode(nest(13))!)).toEqual(
+    nest(13, '[truncated]'),
+  );
+});
