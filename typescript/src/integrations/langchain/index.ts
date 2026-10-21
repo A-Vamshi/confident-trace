@@ -48,11 +48,31 @@ function messages(values: unknown): unknown {
     return normalized;
   });
 }
+function isEmptyList(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+const commandFields = ['goto', 'update', 'resume', 'graph'];
 function graphState(value: unknown, depth = 0): unknown {
   if (depth > 8 || !value || typeof value !== 'object' || types.isProxy(value))
     return value;
   if (Array.isArray(value))
     return list(value).map((item) => graphState(item, depth + 1));
+  const kind = get(value, 'lg_name');
+  if (kind === 'Command') {
+    const output: Record<string, unknown> = { type: 'command' };
+    for (const key of commandFields) {
+      const item = get(value, key);
+      if (item !== undefined && item !== null && !isEmptyList(item))
+        output[key] = graphState(item, depth + 1);
+    }
+    return output;
+  }
+  if (kind === 'Send')
+    return {
+      type: 'send',
+      node: get(value, 'node'),
+      arg: graphState(get(value, 'args'), depth + 1),
+    };
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return value;
   const output: Record<string, unknown> = {};
