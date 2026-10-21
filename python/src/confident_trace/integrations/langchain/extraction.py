@@ -1,10 +1,12 @@
 """Normalize public callback payloads without serializing SDK configuration."""
 
+import dataclasses
 from itertools import islice
 
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 from langchain_core.prompt_values import ChatPromptValue, StringPromptValue
+from pydantic import BaseModel
 
 from ..._core.spans import content
 from ..._semconv import genai_v1_37_0 as ai
@@ -81,6 +83,18 @@ def messages(values, *, output=False):
     return result
 
 
+def fields(value):
+    if isinstance(value, BaseModel):
+        return vars(value)
+    if not dataclasses.is_dataclass(value) or isinstance(value, type):
+        return None
+    data = getattr(value, "__dict__", None)
+    names = [field.name for field in dataclasses.fields(value)]
+    if type(data) is dict:
+        return {name: data[name] for name in names if name in data}
+    return {name: getattr(value, name) for name in names if hasattr(value, name)}
+
+
 def generic(value, depth=0):
     if depth > 6:
         return "[truncated]"
@@ -112,6 +126,9 @@ def generic(value, depth=0):
             "node": value.node,
             "arg": generic(value.arg, depth + 1),
         }
+    state = fields(value)
+    if state is not None:
+        return generic(dict(state), depth)
     if type(value) is dict:
         return {
             k: generic(v, depth + 1)

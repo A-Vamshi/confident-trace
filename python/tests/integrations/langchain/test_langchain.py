@@ -1029,3 +1029,51 @@ def test_graph_commands_and_sends_are_tagged_objects(tracing):
         "resume": "yes",
     }
     assert all("[unsupported]" not in output for output in outputs)
+
+
+def test_graph_pydantic_and_dataclass_state_is_recorded(tracing):
+    from dataclasses import dataclass
+
+    from langgraph.graph import END, START, StateGraph
+    from pydantic import BaseModel
+
+    _, exporter, _, _ = tracing
+
+    class Model(BaseModel):
+        question: str
+        answer: str = ""
+
+    @dataclass
+    class Data:
+        question: str
+        answer: str = ""
+
+    @dataclass(slots=True)
+    class Slotted:
+        question: str
+        answer: str = ""
+
+    for schema in (Model, Data, Slotted):
+        exporter.clear()
+        (
+            StateGraph(schema)
+            .add_node("answer", lambda state: {"answer": state.question + "!"})
+            .add_edge(START, "answer")
+            .add_edge("answer", END)
+            .compile()
+            .invoke(schema(question="why"))
+        )
+        root = named(exporter, "LangGraph")[0]
+        node = named(exporter, "answer")[0]
+        assert json.loads(root.attributes["confident.span.input"]) == {
+            "question": "why",
+            "answer": "",
+        }
+        assert json.loads(node.attributes["confident.span.input"]) == {
+            "question": "why",
+            "answer": "",
+        }
+        assert json.loads(root.attributes["confident.span.output"]) == {
+            "question": "why",
+            "answer": "why!",
+        }
