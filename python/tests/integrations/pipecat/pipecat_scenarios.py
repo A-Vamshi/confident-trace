@@ -209,7 +209,14 @@ async def test_flush_failure_does_not_break_cleanup(monkeypatch):
     ct.shutdown()
 
 
-CONTENT = ("input", "output", "transcript", "text")
+CONTENT = (
+    "input",
+    "output",
+    "transcript",
+    "text",
+    "instructions",
+    "session.instructions",
+)
 
 
 def speech_spans():
@@ -221,6 +228,10 @@ def speech_spans():
     with tracer.start_as_current_span("tts") as span:
         span.set_attribute("text", "It is sunny in Paris.")
         span.set_attribute("metrics.character_count", 21)
+    with tracer.start_as_current_span("llm_setup") as span:
+        span.set_attribute("instructions", "You are a Paris weather bot.")
+        span.set_attribute("session.instructions", "You are a Paris weather bot.")
+        span.set_attribute("session.voice", "alloy")
 
 
 @pytest.mark.asyncio
@@ -244,6 +255,7 @@ async def test_capture_content_off_drops_pipecat_content():
     assert named["llm"]["gen_ai.request.model"] == "gpt-4.1-mini"
     assert named["stt"]["language"] == "en"
     assert named["tts"]["metrics.character_count"] == 21
+    assert named["llm_setup"]["session.voice"] == "alloy"
     assert named["conversation"]["conversation.id"] == "call-1"
 
 
