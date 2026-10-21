@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — LangChain retrievers
+
+- Mark LangChain retriever runs as retriever spans (Python) with
+  `confident.span.type`, so a retriever is no longer indistinguishable from a
+  chain. GenAI semantic conventions 1.37.0 have no retrieval operation.
+
+## Unreleased — String subclasses
+
+- Capture string subclasses as text instead of `"[unsupported]"` (Python), in
+  content values and dictionary keys. This covers string enums and the
+  `TextAccessor` that LangChain 1.x chains ending in `StrOutputParser` return,
+  so those chains record their output.
+
 ## Unreleased — Pipecat
 
 - Trace Pipecat pipelines (Python): `init()` turns on Pipecat's tracing for every
