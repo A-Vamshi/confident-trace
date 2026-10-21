@@ -21,6 +21,7 @@ import { ChatGenerationChunk } from '@langchain/core/outputs';
 import { DynamicTool } from '@langchain/core/tools';
 import {
   Annotation,
+  MessagesAnnotation,
   StateGraph,
   START,
   END,
@@ -396,4 +397,33 @@ it('normalizes real retriever documents and closes model/tool errors', async () 
   const count = spans().length;
   handler.close();
   expect(spans()).toHaveLength(count);
+});
+it('keeps every LangGraph state key next to normalized messages', async () => {
+  const handler = new ConfidentLangGraphCallbackHandler();
+  const schema = Annotation.Root({
+    ...MessagesAnnotation.spec,
+    step: Annotation<number>,
+  });
+  await new StateGraph(schema)
+    .addNode('reply', () => ({ messages: [new AIMessage('hello')], step: 1 }))
+    .addEdge(START, 'reply')
+    .addEdge('reply', END)
+    .compile()
+    .invoke(
+      { messages: [new HumanMessage('hi')], step: 0 },
+      { callbacks: [handler] },
+    );
+  const root = spans().find((s) => s.name === 'LangGraph')!;
+  expect(JSON.parse(String(root.attributes['confident.span.input']))).toEqual({
+    messages: [{ role: 'user', parts: [{ type: 'text', content: 'hi' }] }],
+    step: 0,
+  });
+  expect(JSON.parse(String(root.attributes['confident.span.output']))).toEqual({
+    messages: [
+      { role: 'user', parts: [{ type: 'text', content: 'hi' }] },
+      { role: 'assistant', parts: [{ type: 'text', content: 'hello' }] },
+    ],
+    step: 1,
+  });
+  handler.close();
 });
