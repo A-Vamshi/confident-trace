@@ -1077,3 +1077,60 @@ def test_graph_pydantic_and_dataclass_state_is_recorded(tracing):
             "question": "why",
             "answer": "why!",
         }
+
+
+def test_graph_state_scalars_are_recorded(tracing):
+    import datetime
+    import enum
+    import uuid
+    from typing import TypedDict
+
+    from langgraph.graph import END, START, StateGraph
+
+    _, exporter, _, _ = tracing
+
+    class Color(str, enum.Enum):
+        RED = "red"
+
+    class Level(enum.IntEnum):
+        HIGH = 3
+
+    class State(TypedDict):
+        at: datetime.datetime
+        day: datetime.date
+        id: uuid.UUID
+        color: Color
+        level: Level
+        tags: set
+
+    identifier = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    (
+        StateGraph(State)
+        .add_node("touch", lambda state: {"color": Color.RED})
+        .add_edge(START, "touch")
+        .add_edge("touch", END)
+        .compile()
+        .invoke(
+            {
+                "at": datetime.datetime(2026, 1, 2, 3, 4, 5),
+                "day": datetime.date(2026, 1, 2),
+                "id": identifier,
+                "color": Color.RED,
+                "level": Level.HIGH,
+                "tags": {"a"},
+            }
+        )
+    )
+    expected = {
+        "at": "2026-01-02T03:04:05",
+        "day": "2026-01-02",
+        "id": str(identifier),
+        "color": "red",
+        "level": 3,
+        "tags": ["a"],
+    }
+    root = named(exporter, "LangGraph")[0]
+    assert json.loads(root.attributes["confident.span.input"]) == expected
+    assert json.loads(root.attributes["confident.span.output"]) == expected
+    node = named(exporter, "touch")[0]
+    assert json.loads(node.attributes["confident.span.output"]) == {"color": "red"}

@@ -1,6 +1,9 @@
 """Normalize public callback payloads without serializing SDK configuration."""
 
 import dataclasses
+import datetime
+import uuid
+from enum import Enum
 from itertools import islice
 
 from langchain_core.documents import Document
@@ -19,6 +22,7 @@ except ImportError:
 
 _MEDIA_BLOCKS = {"image", "image_url", "file", "audio", "video"}
 _COMMAND_FIELDS = ("goto", "update", "resume", "graph")
+_TIMES = (datetime.datetime, datetime.date, datetime.time)
 
 
 def mapping(value):
@@ -98,6 +102,14 @@ def fields(value):
 def generic(value, depth=0):
     if depth > 6:
         return "[truncated]"
+    if type(value) in _TIMES:
+        return value.isoformat()
+    if type(value) is uuid.UUID:
+        return str(value)
+    if isinstance(value, Enum):
+        return generic(value._value_, depth + 1)
+    if type(value) in (set, frozenset):
+        return [generic(v, depth + 1) for v in islice(value, 128)]
     if isinstance(value, ChatPromptValue):
         # Read known data fields, not arbitrary to_string/to_messages hooks.
         prompt_messages = vars(value).get("messages", [])
