@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
-import { isDisabled, resolveExportOptions } from '@/config/resolve';
+import {
+  isDisabled,
+  resolveExportOptions,
+  resolveMaxNestingDepth,
+} from '@/config/resolve';
 import { createHttpExporter } from '@/exporters/http';
 
 vi.mock('@opentelemetry/exporter-trace-otlp-proto', () => ({
@@ -152,5 +156,48 @@ describe('export configuration', () => {
     expect(() =>
       resolveExportOptions({ tlsSkipVerify: 'false' as unknown as boolean }),
     ).toThrow('tlsSkipVerify must be a boolean');
+  });
+});
+describe('content configuration', () => {
+  it.each([
+    [undefined, undefined, 12],
+    ['4', undefined, 4],
+    [' 4 ', undefined, 4],
+    ['4', 20, 20],
+    ['deep', undefined, 12],
+    ['4.5', undefined, 12],
+    ['0', undefined, 12],
+    ['65', undefined, 12],
+  ])(
+    'resolves CONFIDENT_MAX_NESTING_DEPTH %s with explicit %s to %s',
+    (environment, explicit, expected) => {
+      vi.stubEnv('CONFIDENT_MAX_NESTING_DEPTH', environment);
+      expect(resolveMaxNestingDepth(explicit)).toBe(expected);
+    },
+  );
+  it('applies the resolved depth to the runtime content policy', async () => {
+    const { trace, context, propagation } = await import('@opentelemetry/api');
+    const { InMemorySpanExporter } =
+      await import('@opentelemetry/sdk-trace-base');
+    trace.disable();
+    context.disable();
+    propagation.disable();
+    vi.resetModules();
+    vi.stubEnv('CONFIDENT_MAX_NESTING_DEPTH', '3');
+    const api = await import('@/index');
+    const { state } = await import('@/runtime/state');
+    api.init({ exporter: new InMemorySpanExporter(), instrumentations: [] });
+    try {
+      expect(state.policy?.maxNestingDepth).toBe(3);
+      expect(state.policy?.encode([[['leaf']]])).toBe('[[["leaf"]]]');
+      expect(state.policy?.encode([[[['leaf']]]])).toBe(
+        '[[[["[truncated]"]]]]',
+      );
+    } finally {
+      await api.shutdown();
+      trace.disable();
+      context.disable();
+      propagation.disable();
+    }
   });
 });

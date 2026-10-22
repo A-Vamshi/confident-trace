@@ -918,3 +918,219 @@ def test_graph_integration_label_and_isolation(tracing):
         assert all(s.attributes.get('confident.span.integration') == expected for s in members)
         prompt = next(s for s in members if s.name == 'ChatPromptTemplate')
         assert '[unsupported]' not in prompt.attributes['confident.span.output']
+
+
+def test_graph_message_state_is_a_flat_message_list(tracing):
+    from langchain_core.messages import AIMessage, HumanMessage
+    from langgraph.graph import END, START, MessagesState, StateGraph
+
+    _, exporter, _, _ = tracing
+
+    class State(MessagesState):
+        step: int
+
+    graph = (
+        StateGraph(State)
+        .add_node("reply", lambda state: {"messages": [AIMessage("hello")], "step": 1})
+        .add_edge(START, "reply")
+        .add_edge("reply", END)
+        .compile()
+    )
+    graph.invoke({"messages": [HumanMessage("hi")], "step": 0})
+    root = named(exporter, "LangGraph")[0]
+    assert json.loads(root.attributes["confident.span.output"]) == {
+        "messages": [
+            {"role": "user", "parts": [{"type": "text", "content": "hi"}]},
+            {"role": "assistant", "parts": [{"type": "text", "content": "hello"}]},
+        ],
+        "step": 1,
+    }
+
+
+def test_graph_commands_and_sends_are_tagged_objects(tracing):
+    import operator
+    from typing import Annotated, TypedDict
+
+    from langchain_core.messages import AIMessage, HumanMessage
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, MessagesState, StateGraph
+    from langgraph.types import Command, Send, interrupt
+
+    _, exporter, _, _ = tracing
+
+    class Routed(MessagesState):
+        step: int
+
+    (
+        StateGraph(Routed)
+        .add_node(
+            "route",
+            lambda state: Command(
+                update={"messages": [AIMessage("routed")], "step": 1}, goto="done"
+            ),
+            destinations=("done",),
+        )
+        .add_node("done", lambda state: {"step": 2})
+        .add_edge(START, "route")
+        .add_edge("done", END)
+        .compile()
+        .invoke({"messages": [HumanMessage("hi")], "step": 0})
+    )
+    assert json.loads(named(exporter, "route")[0].attributes["confident.span.output"]) == {
+        "type": "command",
+        "goto": "done",
+        "update": {
+            "messages": [
+                {"role": "assistant", "parts": [{"type": "text", "content": "routed"}]}
+            ],
+            "step": 1,
+        },
+    }
+
+    class Fanout(TypedDict):
+        items: list
+        out: Annotated[list, operator.add]
+
+    (
+        StateGraph(Fanout)
+        .add_node("work", lambda state: {"out": [state["item"]]})
+        .add_conditional_edges(
+            START, lambda state: [Send("work", {"item": i}) for i in state["items"]], ["work"]
+        )
+        .add_edge("work", END)
+        .compile()
+        .invoke({"items": ["x", "y"], "out": []})
+    )
+    outputs = [s.attributes.get("confident.span.output", "") for s in spans(exporter)]
+    assert json.dumps(
+        [
+            {"type": "send", "node": "work", "arg": {"item": "x"}},
+            {"type": "send", "node": "work", "arg": {"item": "y"}},
+        ],
+        separators=(",", ":"),
+    ) in outputs
+
+    class Asked(TypedDict):
+        answer: str
+
+    graph = (
+        StateGraph(Asked)
+        .add_node("ask", lambda state: {"answer": interrupt("question")})
+        .add_edge(START, "ask")
+        .add_edge("ask", END)
+        .compile(checkpointer=InMemorySaver())
+    )
+    config = {"configurable": {"thread_id": "resume"}}
+    graph.invoke({"answer": ""}, config)
+    graph.invoke(Command(resume="yes"), config)
+    resumed = named(exporter, "LangGraph")[-1]
+    assert json.loads(resumed.attributes["confident.span.input"]) == {
+        "type": "command",
+        "resume": "yes",
+    }
+    assert all("[unsupported]" not in output for output in outputs)
+
+
+def test_graph_pydantic_and_dataclass_state_is_recorded(tracing):
+    from dataclasses import dataclass
+
+    from langgraph.graph import END, START, StateGraph
+    from pydantic import BaseModel
+
+    _, exporter, _, _ = tracing
+
+    class Model(BaseModel):
+        question: str
+        answer: str = ""
+
+    @dataclass
+    class Data:
+        question: str
+        answer: str = ""
+
+    @dataclass(slots=True)
+    class Slotted:
+        question: str
+        answer: str = ""
+
+    for schema in (Model, Data, Slotted):
+        exporter.clear()
+        (
+            StateGraph(schema)
+            .add_node("answer", lambda state: {"answer": state.question + "!"})
+            .add_edge(START, "answer")
+            .add_edge("answer", END)
+            .compile()
+            .invoke(schema(question="why"))
+        )
+        root = named(exporter, "LangGraph")[0]
+        node = named(exporter, "answer")[0]
+        assert json.loads(root.attributes["confident.span.input"]) == {
+            "question": "why",
+            "answer": "",
+        }
+        assert json.loads(node.attributes["confident.span.input"]) == {
+            "question": "why",
+            "answer": "",
+        }
+        assert json.loads(root.attributes["confident.span.output"]) == {
+            "question": "why",
+            "answer": "why!",
+        }
+
+
+def test_graph_state_scalars_are_recorded(tracing):
+    import datetime
+    import enum
+    import uuid
+    from typing import TypedDict
+
+    from langgraph.graph import END, START, StateGraph
+
+    _, exporter, _, _ = tracing
+
+    class Color(str, enum.Enum):
+        RED = "red"
+
+    class Level(enum.IntEnum):
+        HIGH = 3
+
+    class State(TypedDict):
+        at: datetime.datetime
+        day: datetime.date
+        id: uuid.UUID
+        color: Color
+        level: Level
+        tags: set
+
+    identifier = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    (
+        StateGraph(State)
+        .add_node("touch", lambda state: {"color": Color.RED})
+        .add_edge(START, "touch")
+        .add_edge("touch", END)
+        .compile()
+        .invoke(
+            {
+                "at": datetime.datetime(2026, 1, 2, 3, 4, 5),
+                "day": datetime.date(2026, 1, 2),
+                "id": identifier,
+                "color": Color.RED,
+                "level": Level.HIGH,
+                "tags": {"a"},
+            }
+        )
+    )
+    expected = {
+        "at": "2026-01-02T03:04:05",
+        "day": "2026-01-02",
+        "id": str(identifier),
+        "color": "red",
+        "level": 3,
+        "tags": ["a"],
+    }
+    root = named(exporter, "LangGraph")[0]
+    assert json.loads(root.attributes["confident.span.input"]) == expected
+    assert json.loads(root.attributes["confident.span.output"]) == expected
+    node = named(exporter, "touch")[0]
+    assert json.loads(node.attributes["confident.span.output"]) == {"color": "red"}

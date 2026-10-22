@@ -21,12 +21,14 @@ import { ChatGenerationChunk } from '@langchain/core/outputs';
 import { DynamicTool } from '@langchain/core/tools';
 import {
   Annotation,
+  MessagesAnnotation,
   StateGraph,
   START,
   END,
   MemorySaver,
   interrupt,
   Command,
+  Send,
 } from '@langchain/langgraph';
 import { createAgent } from 'langchain';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
@@ -396,4 +398,142 @@ it('normalizes real retriever documents and closes model/tool errors', async () 
   const count = spans().length;
   handler.close();
   expect(spans()).toHaveLength(count);
+});
+it('keeps every LangGraph state key next to normalized messages', async () => {
+  const handler = new ConfidentLangGraphCallbackHandler();
+  const schema = Annotation.Root({
+    ...MessagesAnnotation.spec,
+    step: Annotation<number>,
+  });
+  await new StateGraph(schema)
+    .addNode('reply', () => ({ messages: [new AIMessage('hello')], step: 1 }))
+    .addEdge(START, 'reply')
+    .addEdge('reply', END)
+    .compile()
+    .invoke(
+      { messages: [new HumanMessage('hi')], step: 0 },
+      { callbacks: [handler] },
+    );
+  const root = spans().find((s) => s.name === 'LangGraph')!;
+  expect(JSON.parse(String(root.attributes['confident.span.input']))).toEqual({
+    messages: [{ role: 'user', parts: [{ type: 'text', content: 'hi' }] }],
+    step: 0,
+  });
+  expect(JSON.parse(String(root.attributes['confident.span.output']))).toEqual({
+    messages: [
+      { role: 'user', parts: [{ type: 'text', content: 'hi' }] },
+      { role: 'assistant', parts: [{ type: 'text', content: 'hello' }] },
+    ],
+    step: 1,
+  });
+  handler.close();
+});
+it('records LangGraph Command and Send values as tagged objects', async () => {
+  const handler = new ConfidentLangGraphCallbackHandler();
+  const routed = Annotation.Root({
+    ...MessagesAnnotation.spec,
+    step: Annotation<number>,
+  });
+  await new StateGraph(routed)
+    .addNode(
+      'route',
+      () =>
+        new Command({
+          update: { messages: [new AIMessage('routed')], step: 1 },
+          goto: 'done',
+        }),
+      { ends: ['done'] },
+    )
+    .addNode('done', () => ({ step: 2 }))
+    .addEdge(START, 'route')
+    .addEdge('done', END)
+    .compile()
+    .invoke(
+      { messages: [new HumanMessage('hi')], step: 0 },
+      { callbacks: [handler] },
+    );
+  const route = spans().find((s) => s.name === 'route')!;
+  expect(JSON.parse(String(route.attributes['confident.span.output']))).toEqual(
+    {
+      type: 'command',
+      goto: ['done'],
+      update: {
+        messages: [
+          { role: 'assistant', parts: [{ type: 'text', content: 'routed' }] },
+        ],
+        step: 1,
+      },
+    },
+  );
+  const fanout = Annotation.Root({
+    items: Annotation<string[]>,
+    out: Annotation<string[]>({
+      reducer: (a, b) => a.concat(b),
+      default: () => [],
+    }),
+  });
+  await new StateGraph(fanout)
+    .addNode('work', (s: { item?: string }) => ({ out: [s.item!] }))
+    .addConditionalEdges(START, (s) =>
+      s.items.map((item) => new Send('work', { item })),
+    )
+    .addEdge('work', END)
+    .compile()
+    .invoke({ items: ['x', 'y'] }, { callbacks: [handler] });
+  expect(
+    spans().map((s) => s.attributes['confident.span.output']),
+  ).toContainEqual(
+    JSON.stringify({
+      output: [
+        { type: 'send', node: 'work', arg: { item: 'x' } },
+        { type: 'send', node: 'work', arg: { item: 'y' } },
+      ],
+    }),
+  );
+  const asked = new StateGraph(Annotation.Root({ answer: Annotation<string> }))
+    .addNode('ask', () => ({ answer: interrupt('question') as string }))
+    .addEdge(START, 'ask')
+    .addEdge('ask', END)
+    .compile({ checkpointer: new MemorySaver() });
+  const config = { callbacks: [handler], configurable: { thread_id: 'send' } };
+  await asked.invoke({ answer: '' }, config);
+  await asked.invoke(new Command({ resume: 'yes' }), config);
+  const resumed = spans()
+    .filter((s) => s.name === 'LangGraph')
+    .at(-1)!;
+  expect(
+    JSON.parse(String(resumed.attributes['confident.span.input'])),
+  ).toEqual({ type: 'command', resume: 'yes' });
+  expect(
+    spans().some((s) =>
+      String(s.attributes['confident.span.output']).includes('[unsupported]'),
+    ),
+  ).toBe(false);
+  handler.close();
+});
+it('records Date values in LangGraph state as ISO strings', async () => {
+  const handler = new ConfidentLangGraphCallbackHandler();
+  const schema = Annotation.Root({
+    at: Annotation<Date>,
+    missing: Annotation<Date>,
+  });
+  await new StateGraph(schema)
+    .addNode('touch', () => ({ at: new Date(Date.UTC(2026, 0, 2)) }))
+    .addEdge(START, 'touch')
+    .addEdge('touch', END)
+    .compile()
+    .invoke(
+      { at: new Date(0), missing: new Date(Number.NaN) },
+      { callbacks: [handler] },
+    );
+  const root = spans().find((s) => s.name === 'LangGraph')!;
+  expect(JSON.parse(String(root.attributes['confident.span.input']))).toEqual({
+    at: '1970-01-01T00:00:00.000Z',
+    missing: null,
+  });
+  expect(JSON.parse(String(root.attributes['confident.span.output']))).toEqual({
+    at: '2026-01-02T00:00:00.000Z',
+    missing: null,
+  });
+  handler.close();
 });

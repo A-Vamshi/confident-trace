@@ -1,11 +1,16 @@
 import { types } from 'node:util';
 import { frameworkOutputs } from '@/runtime/state';
 
+export const MAX_NESTING_DEPTH = 12;
+
 /** Resolve only outputs registered by integrations, including nested graph state.
  * Preserve descriptors so normalization never executes user getters or toJSON.
  * Run before redaction so normalized content cannot bypass the user's redactor.
  */
-export function normalizeFrameworkOutput(value: unknown): unknown {
+export function normalizeFrameworkOutput(
+  value: unknown,
+  maxDepth = MAX_NESTING_DEPTH,
+): unknown {
   const copies = new WeakMap<object, object>();
   let remaining = 1024;
   const visit = (item: unknown, depth: number): unknown => {
@@ -13,7 +18,7 @@ export function normalizeFrameworkOutput(value: unknown): unknown {
       !item ||
       typeof item !== 'object' ||
       types.isProxy(item) ||
-      depth > 8 ||
+      depth > maxDepth ||
       --remaining < 0
     )
       return item;

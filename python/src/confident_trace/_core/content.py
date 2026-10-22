@@ -16,6 +16,7 @@ _PRIMITIVES = (str, bool, int, float)
 
 MEDIA_TYPES = ("blob", "uri")
 MEDIA_OVERHEAD = 256
+MAX_NESTING_DEPTH = 12
 
 
 class MediaBudget:
@@ -80,6 +81,7 @@ class ContentPolicy:
     redact: Callable[[Any], Any] | None = None
     max_media_bytes: int = 5242880
     max_media_total_bytes: int = 16777216
+    max_nesting_depth: int = MAX_NESTING_DEPTH
 
     def budget(self, shape) -> MediaBudget:
         if not shape:
@@ -105,7 +107,7 @@ class ContentPolicy:
 
             def clean(item, depth=0):
                 remaining[0] -= 1
-                if remaining[0] < 0 or depth > 8:
+                if remaining[0] < 0 or depth > self.max_nesting_depth:
                     return "[truncated]"
                 if item is None or type(item) in (bool, int):
                     return item
@@ -130,7 +132,7 @@ class ContentPolicy:
                 return "[unsupported]"
 
             value = clean(value)
-            limit = self.max_bytes + media_length(value)
+            limit = self.max_bytes + media_length(value, self.max_nesting_depth)
             if shape:
                 if not valid_content(value, shape):
                     return None
@@ -260,8 +262,8 @@ def _is_audio_value(value):
     return type(mime_type) is str and mime_type.startswith(AUDIO_MIME_PREFIX)
 
 
-def media_length(value, depth=0):
-    if depth > 8:
+def media_length(value, max_depth=MAX_NESTING_DEPTH, depth=0):
+    if depth > max_depth:
         return 0
     if type(value) is dict:
         if value.get("type") in MEDIA_TYPES:
@@ -270,9 +272,9 @@ def media_length(value, depth=0):
         if _is_audio_value(value):
             payload = value.get("dataBase64") or value.get("url")
             return (len(payload) if type(payload) is str else 0) + MEDIA_OVERHEAD
-        return sum(media_length(v, depth + 1) for v in value.values())
+        return sum(media_length(v, max_depth, depth + 1) for v in value.values())
     if type(value) in (list, tuple):
-        return sum(media_length(v, depth + 1) for v in value)
+        return sum(media_length(v, max_depth, depth + 1) for v in value)
     return 0
 
 

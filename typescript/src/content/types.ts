@@ -6,6 +6,8 @@ export interface ContentOptions {
   maxMediaBytes?: number;
   /** Maximum decoded media bytes per content attribute. */
   maxMediaTotalBytes?: number;
+  /** Maximum nesting depth of a content value; 1 to 64, default 12. */
+  maxNestingDepth?: number;
   /** Synchronous redaction. Throwing omits the content entirely. */
   redact?: (value: unknown) => unknown;
 }

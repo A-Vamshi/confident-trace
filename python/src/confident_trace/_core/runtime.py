@@ -22,7 +22,7 @@ from .. import _attributes as confident
 from .._semconv.genai_v1_37_0 import SCHEMA_URL
 from .._semconv.genai_v1_37_0 import SEMCONV_VERSION as SEMCONV_VERSION
 from .batching import BoundedSpanExporter
-from .content import ContentPolicy, apply_native_policy
+from .content import MAX_NESTING_DEPTH, ContentPolicy, apply_native_policy
 from .otlp import child_environment
 from .safety import safe
 from .scopes import RoutingProcessor, suppressed
@@ -48,6 +48,18 @@ def default_compression():
         os.getenv(otel_env.OTEL_EXPORTER_OTLP_COMPRESSION, ""),
     )
     return "none" if configured == "none" else "gzip"
+
+
+def resolve_max_nesting_depth(value):
+    if value is None:
+        try:
+            value = int(os.getenv("CONFIDENT_MAX_NESTING_DEPTH", ""))
+        except ValueError:
+            return MAX_NESTING_DEPTH
+        return value if 1 <= value <= 64 else MAX_NESTING_DEPTH
+    if type(value) is not int or not 1 <= value <= 64:
+        raise ValueError("max_nesting_depth must be an integer from 1 to 64")
+    return value
 
 
 def resolve_tls_skip_verify(value):
@@ -197,6 +209,7 @@ def init(
     capture_content=True,
     max_content_bytes=16384,
     max_media_bytes=5242880,
+    max_nesting_depth=None,
     redact=None,
     litellm_proxy_urls=(),
     openrouter_proxy_urls=(),
@@ -227,6 +240,7 @@ def init(
                 raise ValueError("max_content_bytes must be at least 64")
             if max_media_bytes < 0:
                 raise ValueError("max_media_bytes must not be negative")
+            resolved_max_nesting_depth = resolve_max_nesting_depth(max_nesting_depth)
             provider = (
                 tracer_provider
                 if tracer_provider is not None
@@ -334,7 +348,11 @@ def init(
                         return create_exporter(project_kwargs)
 
             policy = ContentPolicy(
-                capture_content, max_content_bytes, redact, max_media_bytes
+                capture_content,
+                max_content_bytes,
+                redact,
+                max_media_bytes,
+                max_nesting_depth=resolved_max_nesting_depth,
             )
             processor = OwnedProcessor(
                 RoutingProcessor(

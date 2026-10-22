@@ -355,6 +355,7 @@ export class Capture {
           // Encode each complete Google tool call under the same retention budget.
           const encoded = new ContentPolicy({
             maxContentBytes: this.policy.maxBytes,
+            maxNestingDepth: this.policy.maxNestingDepth,
           }).encode(tool(get(p, 'functionCall'), true));
           if (
             encoded &&

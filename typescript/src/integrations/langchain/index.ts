@@ -1,3 +1,4 @@
+import { types } from 'node:util';
 import { frameworkOutputs, state } from '@/runtime/state';
 import { CallbackRuns } from '@/integrations/callback-runs';
 import type { CallbackOptions } from '@/integrations/callback-runs';
@@ -46,6 +47,43 @@ function messages(values: unknown): unknown {
       );
     return normalized;
   });
+}
+function isEmptyList(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+const commandFields = ['goto', 'update', 'resume', 'graph'];
+function graphState(value: unknown, depth = 0): unknown {
+  if (depth > 12 || !value || typeof value !== 'object' || types.isProxy(value))
+    return value;
+  if (Array.isArray(value))
+    return list(value).map((item) => graphState(item, depth + 1));
+  if (value instanceof Date)
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  const kind = get(value, 'lg_name');
+  if (kind === 'Command') {
+    const output: Record<string, unknown> = { type: 'command' };
+    for (const key of commandFields) {
+      const item = get(value, key);
+      if (item !== undefined && item !== null && !isEmptyList(item))
+        output[key] = graphState(item, depth + 1);
+    }
+    return output;
+  }
+  if (kind === 'Send')
+    return {
+      type: 'send',
+      node: get(value, 'node'),
+      arg: graphState(get(value, 'args'), depth + 1),
+    };
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  const output: Record<string, unknown> = {};
+  for (const key of Object.keys(value).slice(0, 128))
+    output[key] =
+      key === 'messages'
+        ? messages(get(value, key))
+        : graphState(get(value, key), depth + 1);
+  return output;
 }
 function bubbleUp(error: unknown): boolean {
   try {
@@ -116,11 +154,7 @@ export class ConfidentLangChainCallbackHandler {
             : (this.options.rootSpanType ?? 'custom'),
       );
       this.runs.attribute(runId, 'langchain.run.type', runType ?? 'chain');
-      this.runs.content(
-        runId,
-        'input',
-        get(inputs, 'messages') ? messages(get(inputs, 'messages')) : inputs,
-      );
+      this.runs.content(runId, 'input', graphState(inputs));
     });
   };
   handleChainEnd = (output: unknown, runId: string): void =>
@@ -303,13 +337,7 @@ export class ConfidentLangChainCallbackHandler {
     });
   }
   private finish(output: unknown, id: string): void {
-    safely(() =>
-      this.runs.content(
-        id,
-        'output',
-        get(output, 'messages') ? messages(get(output, 'messages')) : output,
-      ),
-    );
+    safely(() => this.runs.content(id, 'output', graphState(output)));
     this.runs.end(id);
   }
 }

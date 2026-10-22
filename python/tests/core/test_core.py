@@ -125,6 +125,62 @@ def test_content_policy():
     assert ContentPolicy(enabled=False).encode("secret") is None
 
 
+def test_content_policy_keeps_twelve_levels_of_nesting():
+    def nest(levels, leaf="leaf"):
+        value = leaf
+        for _ in range(levels):
+            value = [value]
+        return value
+
+    assert json.loads(ContentPolicy().encode(nest(12))) == nest(12)
+    assert json.loads(ContentPolicy().encode(nest(13))) == nest(13, "[truncated]")
+
+
+@pytest.mark.parametrize(
+    ("environment", "explicit", "expected"),
+    [
+        (None, None, 12),
+        ("4", None, 4),
+        ("4", 20, 20),
+        ("deep", None, 12),
+        ("0", None, 12),
+        ("65", None, 12),
+    ],
+)
+def test_max_nesting_depth_resolves_explicit_then_environment(
+    monkeypatch, environment, explicit, expected
+):
+    ct.shutdown()
+    if environment is None:
+        monkeypatch.delenv("CONFIDENT_MAX_NESTING_DEPTH", raising=False)
+    else:
+        monkeypatch.setenv("CONFIDENT_MAX_NESTING_DEPTH", environment)
+    rt = ct.init(
+        instrumentations=(),
+        exporter=InMemorySpanExporter(),
+        max_nesting_depth=explicit,
+    )
+    try:
+        assert rt.policy.max_nesting_depth == expected
+        kept = "leaf"
+        for _ in range(expected):
+            kept = [kept]
+        assert json.loads(rt.policy.encode(kept)) == kept
+        assert "[truncated]" in rt.policy.encode([kept])
+    finally:
+        ct.shutdown()
+
+
+@pytest.mark.parametrize("value", [0, 65, True, 2.5, "4"])
+def test_invalid_max_nesting_depth_disables_initialization(value):
+    ct.shutdown()
+    rt = ct.init(
+        instrumentations=(), exporter=InMemorySpanExporter(), max_nesting_depth=value
+    )
+    assert not rt.active
+    ct.shutdown()
+
+
 def test_idempotence_and_shared_provider_ownership(telemetry):
     provider, exporter = telemetry
     assert ct.init().provider is provider
