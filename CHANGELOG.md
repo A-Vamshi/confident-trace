@@ -39,6 +39,21 @@
   `TextAccessor` that LangChain 1.x chains ending in `StrOutputParser` return,
   so those chains record their output.
 
+## Unreleased: Pipecat call recordings
+
+- Upload the call audio a pipeline's `AudioBufferProcessor` records (Python):
+  encoded to Ogg/Opus as it arrives and uploaded to the call's trace when the
+  pipeline ends, before the final flush, for the call and per-turn players.
+  Skipped when recording never started, with `capture_content=False`, for
+  untraced pipelines, over 18 MB, or at a sample rate Opus can't encode. The call
+  recording upload is now shared with LiveKit.
+
+## Unreleased — Pipecat transcripts
+
+- Document the Pipecat call transcript Confident AI now builds from `stt` and
+  `tts` spans: trace input and output, per-turn messages with latency and
+  interruptions, and thread evaluations held until the call ends.
+
 ## Unreleased — Pipecat
 
 - Trace Pipecat pipelines (Python): `init()` turns on Pipecat's tracing for every

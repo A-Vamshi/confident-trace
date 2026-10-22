@@ -396,7 +396,7 @@ def test_call_recording_upload_skips_tls_verification_when_asked(monkeypatch):
     import ssl
     import urllib.request
 
-    from confident_trace.integrations.livekit.recording import _post
+    from confident_trace.integrations._shared.recording import _post
 
     contexts = []
 

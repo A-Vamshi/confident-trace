@@ -14,6 +14,12 @@ from ._constants import (
     INFERENCE_SPANS,
     SCOPE_NAMES,
 )
+from .recording import (
+    attach_recorder,
+    conversation_trace_uuid,
+    recording_started,
+    upload_recording,
+)
 
 
 def instrument(runtime):
@@ -36,15 +42,35 @@ def instrument(runtime):
 
     # _cleanup ends the conversation span. A bot process is often stopped as
     # soon as its pipeline finishes, before the batch processor's next export.
+    # The trace id is read before _cleanup ends the conversation span, and the
+    # recording is uploaded once the processors have delivered their audio.
     def cleanup_wrapper(original, method):
         async def cleanup(wrapped, instance, args, kwargs):
+            trace_uuid = conversation_trace_uuid(instance)
             try:
                 return await wrapped(*args, **kwargs)
             finally:
+                await upload_recording(runtime, instance, trace_uuid)
                 if getattr(instance, "_enable_tracing", False):
                     await bounded_flush(runtime, "Pipecat")
 
         return cleanup
+
+    def recorder_setup_wrapper(original, method):
+        async def setup(wrapped, instance, args, kwargs):
+            result = await wrapped(*args, **kwargs)
+            if runtime.active and args:
+                attach_recorder(runtime, instance, args[0])
+            return result
+
+        return setup
+
+    def start_recording_wrapper(original, method):
+        async def start_recording(wrapped, instance, args, kwargs):
+            await recording_started(instance)
+            return await wrapped(*args, **kwargs)
+
+        return start_recording
 
     undo = install_targets(
         [("pipecat.pipeline.worker", "PipelineWorker", "__init__")], init_wrapper
@@ -53,6 +79,26 @@ def instrument(runtime):
         raise RuntimeError("Pipecat pipeline hook could not be installed")
     undo += install_targets(
         [("pipecat.pipeline.worker", "PipelineWorker", "_cleanup")], cleanup_wrapper
+    )
+    undo += install_targets(
+        [
+            (
+                "pipecat.processors.audio.audio_buffer_processor",
+                "AudioBufferProcessor",
+                "setup",
+            )
+        ],
+        recorder_setup_wrapper,
+    )
+    undo += install_targets(
+        [
+            (
+                "pipecat.processors.audio.audio_buffer_processor",
+                "AudioBufferProcessor",
+                "start_recording",
+            )
+        ],
+        start_recording_wrapper,
     )
     for scope in SCOPE_NAMES:
         runtime.processor.integration_scopes[scope] = Integration.PIPECAT

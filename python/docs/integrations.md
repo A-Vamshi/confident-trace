@@ -451,10 +451,33 @@ the spans, timing and token usage; `redact` receives each value (JSON text is
 parsed first and written back as JSON), and a value whose redactor raises is
 omitted. `max_content_bytes` does not truncate Pipecat's values.
 `enable_tracing=False` removes a pipeline's Pipecat spans entirely.
-The backend does not display these attributes yet.
 Tests use pipecat-ai 1.13.0 (Python 3.11+).
 
-Call audio is not uploaded yet; see the [proposed design](pipecat-audio.md).
+Confident reads the call's transcript from these spans: what the caller said
+(`stt`) and what the bot spoke (`tts`), grouped by turn. The trace input is the
+conversation before the bot's last reply and the output is that reply; each
+`turn` span shows the caller's words and the bot's answer, with the turn's
+user-to-bot latency and whether the caller interrupted. Spans from one call
+arrive in several exports, so the transcript fills in as they do, and thread
+evaluations wait for the `conversation` span, which ends with the call.
+`capture_content=False` removes the transcript along with the content.
+With OpenAI Realtime or Gemini Live, the bot's side comes from the transcript on
+each spoken `llm_response` span, and `llm_tool_call` / `llm_tool_result` spans
+become tool spans. The session instructions Pipecat writes on `llm_setup`
+(`instructions` and `session.instructions`) are content too.
+
+Pipecat has no recorder of its own. When a pipeline includes Pipecat's
+`AudioBufferProcessor` and recording has started (`auto_start_recording=True` or
+`start_recording()`), Confident encodes the audio it delivers to Ogg/Opus and
+uploads it to the call's trace when the pipeline ends, before the final flush, so
+the call and each turn can be played back. Use `num_channels=2` to record the
+caller on the left and the bot on the right, and a `buffer_size` (for example one
+second, `sample_rate * 2 * num_channels`) to keep long calls out of memory.
+Nothing is uploaded with `capture_content=False`, for pipelines that aren't
+traced, over 18 MB (about 34 minutes of stereo, 69 of mono), or at a sample rate
+Opus can't encode. The upload waits at
+most three seconds, and a failure logs a warning without affecting the trace. See
+[Pipecat call audio](pipecat-audio.md) for how it works.
 
 ## OpenAI Agents SDK
 
