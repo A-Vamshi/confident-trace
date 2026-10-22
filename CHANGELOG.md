@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — OpenAI tool results
+
+- Keep tool calls and their results in an OpenAI Responses input (TypeScript):
+  a `function_call_output` item became an empty user message, and now records
+  as a `tool` message with a `tool_call_response` part, as in Python.
+- Record an OpenAI Agents SDK response's `instructions` as
+  `gen_ai.system_instructions` (TypeScript).
+- Record the arguments OpenAI Agents SDK function spans and LangChain tools pass
+  as JSON text as the object they encode, as Python does (TypeScript).
+- Name a Mastra tool span's `gen_ai.tool.name` by its tool instead of the
+  span's `tool: '<name>'` title (TypeScript).
+
+## Unreleased — AI SDK span updates
+
+- Keep `updateSpan(...)` and `updateTrace(...)` writes made inside AI SDK work
+  (TypeScript): the AI SDK span wrapper dropped every attribute it didn't map,
+  including the `confident.*` ones these write.
+
+## Unreleased — Extra span processors
+
+- Accept `spanProcessors` in `init()` (TypeScript): they run after the
+  package's exporting processor on the provider `init()` owns, see every span,
+  and are shut down with the runtime. JavaScript OTel SDK 2.x can't add a
+  processor once a provider exists, so this is how a library observes the spans
+  of the package-owned runtime.
+
 ## Unreleased — LangChain retrievers
 
 - Mark LangChain retriever runs as retriever spans (Python) with
