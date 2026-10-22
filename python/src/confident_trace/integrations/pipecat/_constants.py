@@ -19,6 +19,7 @@ CONTENT_ATTRIBUTES = frozenset(
         "context_messages",
         native.SYSTEM_INSTRUCTIONS,
         "instructions",
+        "session.instructions",
         "session_properties",
         "tool.arguments",
         "tool.result",

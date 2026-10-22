@@ -1,9 +1,9 @@
-# Pipecat call audio (proposed)
+# Pipecat call audio
 
-Status: design only, not implemented. Tracing ships first; see
-[Pipecat (native OTel)](integrations.md#pipecat-native-otel). This page describes the
-experience we want for call audio, from the user's side, and the decisions still
-open. Each decision lists what a user would see under each option.
+Status: implemented in `integrations/pipecat/recording.py`, with the upload shared
+with LiveKit in `integrations/_shared/recording.py`. See
+[Pipecat (native OTel)](integrations.md#pipecat-native-otel) for tracing. This page
+records the user experience and the decisions behind it.
 
 ## What the user writes
 
@@ -34,26 +34,36 @@ That is the whole change. Users who already save audio through
 - The call's trace has a call player, and each `turn` span has a player cut to
   that turn, the same as LiveKit calls.
 - The upload happens when the pipeline ends (`EndFrame` or `CancelFrame`), before
-  the final span flush, inside the same five-second shutdown budget.
+  the final span flush. It waits at most three seconds, then the flush waits at
+  most five.
 - Nothing is uploaded when:
   - the pipeline has no `AudioBufferProcessor`, or recording never started
   - tracing is off for that pipeline (`enable_tracing=False`, or `"pipecat"` left
     out of `instrumentations`)
   - `init(capture_content=False)`
+  - the sample rate is one Opus cannot encode (8, 12, 16, 24 and 48 kHz work; a
+    warning is logged)
+  - the encoded recording is over 18 MB (a warning is logged)
   - the upload fails or times out (a warning is logged; the trace still arrives)
 
 ## How it works
 
-1. On `StartFrame`, the processor receives the pipeline's tracing context. We keep
-   the conversation's trace id from it.
-2. On `start_recording`, we note the wall-clock start (`startedAt`), which the
-   backend uses to line turns up with the audio.
+1. When an `AudioBufferProcessor` is set up in a traced pipeline, we add our own
+   `on_audio_data` handler to it and register it with its `PipelineWorker`
+   (`FrameProcessorSetup.pipeline_worker`).
+2. When `start_recording()` runs, we note the wall-clock start (`startedAt`), which
+   the backend uses to line turns up with the audio. Starting again after a stop
+   discards the earlier audio, so the recording always matches `startedAt`.
 3. Each `on_audio_data` delivery (one at the end when `buffer_size=0`, or one
-   every `buffer_size` bytes) is encoded into a temporary file as it arrives.
-4. On `stop_recording`, we close the file and POST it to
-   `/v1/call-recordings?traceUuid=…&startedAt=…`, reusing LiveKit's upload path.
+   every `buffer_size` bytes) is encoded with `soundfile` into a temporary Ogg/Opus
+   file as it arrives, in order, off the event loop.
+4. `PipelineWorker._cleanup` is wrapped: the conversation's trace id is read from
+   the worker's tracing context before Pipecat ends the conversation span. Once
+   the processors have delivered their last audio, we close the file and POST it
+   to `/v1/call-recordings?traceUuid=…&startedAt=…`, then flush spans. When a
+   pipeline has several processors, the first one with audio is uploaded.
 
-## Open decisions
+## Decisions
 
 ### 1. Audio format
 
@@ -61,13 +71,13 @@ Pipecat hands over raw 16-bit PCM. LiveKit uploads Ogg/Opus.
 
 | Option | 30-minute call, stereo 24 kHz | User sees |
 | --- | --- | --- |
-| Ogg/Opus via `soundfile` | about 5–10 MB | Long calls fit. No new dependency: Pipecat already requires `soundfile` (libsndfile), which encodes Opus from version 1.0.29. |
+| Ogg/Opus via `soundfile` | about 16 MB at libsndfile's default bitrate | Long calls fit. No new dependency: Pipecat already requires `soundfile` (libsndfile), which encodes Opus from version 1.0.29. |
 | WAV | about 170 MB | Calls over about 3 minutes skip the upload at the current 18 MB cap. |
 | WAV, downsampled to 16 kHz mono | about 58 MB | Calls over about 9 minutes skip the upload; quality drops and the speakers can't be separated. |
 
-Recommendation: Ogg/Opus, falling back to a capped WAV only if the installed
-libsndfile cannot write Opus. This needs the backend to accept `audio/ogg` from
-Pipecat (it already does from LiveKit).
+Decided: Ogg/Opus only. The backend and the call player already accept
+`audio/ogg`, so nothing changes there. `soundfile` 0.13 bundles a libsndfile that
+writes Opus.
 
 ### 2. Mono or stereo
 
@@ -77,8 +87,8 @@ Pipecat (it already does from LiveKit).
 - **Mono**: matches Pipecat's default, so users who leave the default still get
   audio.
 
-Recommendation: accept whatever the user configured and document stereo as the
-better choice. We should not change their processor's channel count.
+Decided: accept whatever the user configured and document stereo as the better
+choice. We never change their processor's channel count.
 
 ### 3. Long calls and the size cap
 
@@ -88,7 +98,9 @@ better choice. We should not change their processor's channel count.
 | Raise the cap for Pipecat | Needs a larger backend body limit. |
 | Chunked or presigned upload | No practical limit; needs a new backend endpoint and more time at shutdown. |
 
-Recommendation: keep the cap for v1 if we go with Opus; revisit for WAV.
+Decided: keep the 18 MB cap. At libsndfile's default Opus bitrate (about 73 kbps
+stereo, 36 kbps mono at 24 kHz) that is about 34 minutes of stereo or 69 minutes
+of mono.
 
 ### 4. Recording that was never started
 
@@ -98,10 +110,10 @@ no audio and no error.
 
 | Option | User sees |
 | --- | --- |
-| Respect the user's choice and log a debug message | Recording stays fully under user control, for example waiting for consent. |
+| Respect the user's choice | Recording stays fully under user control, for example waiting for consent. |
 | Start recording automatically once the pipeline starts | Works out of the box, but overrides a deliberate delay. |
 
-Recommendation: respect the user's choice; the docs example uses
+Decided: respect the user's choice; the docs example uses
 `auto_start_recording=True`.
 
 ### 5. Memory
@@ -111,7 +123,7 @@ With `buffer_size=0`, Pipecat itself holds the whole call in memory (about
 file as it arrives keeps our own copy small, but only `buffer_size>0` (for
 example one second, `buffer_size=sample_rate * 2 * channels`) bounds Pipecat's.
 
-Recommendation: encode chunks as they arrive, and document a `buffer_size` for long calls.
+Decided: encode chunks as they arrive, and document a `buffer_size` for long calls.
 
 ### 6. Privacy switch
 
@@ -123,15 +135,15 @@ equivalent of `LIVEKIT_TELEMETRY_ALLOW_PII`.
 | `capture_content=False` only | One switch for all content. |
 | A separate audio switch, for example `CONFIDENT_UPLOAD_CALL_AUDIO=false` | Keep text traces but never send audio. |
 
-Recommendation: `capture_content` only for v1; add a switch if customers ask.
+Decided: `capture_content` only; add a switch if customers ask.
 
 ### 7. Backend display
 
-The players line turns up using LiveKit's turn spans. Pipecat has one `turn` span
-per exchange (user and bot together), and its text is in the plain
-`transcript`, `text`, `input` and `output` attributes. The backend needs a
-Pipecat mapping for the per-turn players and the transcript. Until then, the
-call player works, but turn players and transcript text may not show.
+Confident AI now builds a timed transcript from Pipecat's `stt` and `tts` spans,
+grouped by turn, and cuts each turn's audio from the call recording using those
+timings, the same way it does for LiveKit. Once the SDK uploads the recording,
+the call player and the per-turn players need no further backend work, as long
+as the format is `audio/ogg` (decision 1).
 
 ## Not planned
 
