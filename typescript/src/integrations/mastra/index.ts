@@ -54,6 +54,7 @@ export interface MastraTracingEvent {
     errorInfo?: unknown;
     metadata?: unknown;
     tags?: string[];
+    entityName?: string;
   };
 }
 export type MastraExporterOptions = InitOptions;
@@ -188,9 +189,14 @@ export class ConfidentMastraExporter {
       if (inference) attributes[S.ATTR_GEN_AI_OPERATION_NAME] = 'chat';
       else if (tool) {
         attributes[S.ATTR_GEN_AI_OPERATION_NAME] = 'execute_tool';
+        // Mastra titles a tool span "tool: '<name>'".
         set(
           S.ATTR_GEN_AI_TOOL_NAME,
-          get(data, 'toolName') ?? get(data, 'name') ?? source.name,
+          get(data, 'toolName') ??
+            get(data, 'name') ??
+            source.entityName ??
+            source.name.match(/'([^']+)'/)?.[1] ??
+            source.name,
         );
       }
       for (const [key, attr] of [

@@ -133,6 +133,22 @@ export function createVercelAITracer(
     };
     const set = (key: string, value: unknown) => {
       if (ended || value === undefined) return;
+      // updateSpan/updateTrace write Confident attributes they already encoded;
+      // the AI SDK itself never writes these keys.
+      if (key.startsWith('confident.')) {
+        if (
+          typeof value === 'string' ||
+          typeof value === 'boolean' ||
+          (typeof value === 'number' && Number.isFinite(value))
+        )
+          span.setAttribute(key, value);
+        else if (Array.isArray(value))
+          span.setAttribute(
+            key,
+            list(value).filter((v): v is string => typeof v === 'string'),
+          );
+        return;
+      }
       const mapped =
         mappings[key] ??
         (Object.values(mappings).includes(key) ||

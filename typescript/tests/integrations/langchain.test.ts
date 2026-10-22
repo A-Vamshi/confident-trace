@@ -18,7 +18,7 @@ import {
 } from '@langchain/core/messages';
 import type { StandardMessageStructure } from '@langchain/core/messages';
 import { ChatGenerationChunk } from '@langchain/core/outputs';
-import { DynamicTool } from '@langchain/core/tools';
+import { DynamicStructuredTool, DynamicTool } from '@langchain/core/tools';
 import {
   Annotation,
   StateGraph,
@@ -133,6 +133,34 @@ it('traces real Runnable chains, chat models and tools under an existing parent'
       .every((s) => s.instrumentationScope.schemaUrl?.endsWith('/1.37.0')),
   ).toBe(true);
 });
+it("records a structured tool's arguments as an object", async () => {
+  const handler = new ConfidentLangChainCallbackHandler();
+  const forecast = new DynamicStructuredTool({
+    name: 'forecast',
+    description: 'test',
+    schema: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+    },
+    func: async ({ city }: { city: string }) => `${city}: sunny`,
+  });
+  // As an agent calls it.
+  await forecast.invoke(
+    {
+      name: 'forecast',
+      args: { city: 'Paris' },
+      id: 'call1',
+      type: 'tool_call',
+    },
+    { callbacks: [handler] },
+  );
+  const span = spans().find((s) => s.name === 'forecast')!;
+  expect(JSON.parse(String(span.attributes['confident.span.input']))).toEqual({
+    city: 'Paris',
+  });
+});
+
 it('captures completed streaming tool calls and usage without buffering tokens', async () => {
   const handler = new ConfidentLangChainCallbackHandler();
   const m = new TestChatModel({

@@ -283,7 +283,9 @@ option takes precedence. Standard OTel endpoint variables are ignored.
 
 `init()` accepts `instrumentations` (`"all"` or an array of integration names), plus camelCase options: `apiKey`, `endpoint`, `protocol`, `headers`,
 `timeoutMillis`, `compression`, `tlsSkipVerify`, `exporter`, `exportNonAiSpans`, `resourceAttributes`, `captureContent`,
-`maxContentBytes`, and `redact`. The processor factory accepts export options only.
+`maxContentBytes`, `redact`, and `spanProcessors`. The processor factory accepts export options only.
+`spanProcessors` run after the package's exporting processor on the package-owned
+provider, see every span, and are shut down with the runtime.
 An injected exporter is owned by the resulting processor and bypasses exporter
 configuration. Disabled/invalid-before-construction initialization does not consume it.
 

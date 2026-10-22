@@ -39,6 +39,14 @@ function tool(value: unknown, google = false): GenAiPart {
     arguments: get(value, google ? 'args' : 'arguments') ?? get(value, 'input'),
   };
 }
+function toolResult(value: unknown): GenAiPart {
+  const id = text(get(value, 'call_id'));
+  return {
+    type: 'tool_call_response',
+    ...(id === undefined ? {} : { id }),
+    response: get(value, 'output'),
+  };
+}
 
 const MIME_KEYS = ['mime_type', 'media_type'];
 const DATA_KEYS = ['data', 'base64', 'bytes'];
@@ -128,6 +136,7 @@ export function parts(value: unknown): GenAiPart[] {
       get(block, 'type') === 'function_call'
     )
       return tool(block);
+    if (get(block, 'type') === 'function_call_output') return toolResult(block);
     if (get(block, 'functionCall'))
       return tool(get(block, 'functionCall'), true);
     return media(block);
@@ -139,6 +148,8 @@ export function messages(value: unknown): GenAiMessage[] {
     if (typeof m === 'string') return { role: 'user', parts: parts(m) };
     if (get(m, 'type') === 'function_call')
       return { role: 'assistant', parts: [tool(m)] };
+    if (get(m, 'type') === 'function_call_output')
+      return { role: 'tool', parts: [toolResult(m)] };
     const role = text(get(m, 'role')) ?? 'user';
     const p = parts(get(m, 'content') ?? get(m, 'parts') ?? '');
     for (const t of list(get(m, 'tool_calls'))) {

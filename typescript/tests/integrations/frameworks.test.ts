@@ -459,6 +459,32 @@ it('exports resumed Mastra spans without needing prior start events', async () =
   expect(span.duration).toEqual([0, 500000000]);
   expect(span.parentSpanContext?.spanId).toBe(source.parentSpanId);
 });
+it('names a Mastra tool span by its tool, not its title', async () => {
+  const { bridge, sink } = mastra();
+  const tool = (id: string, extra: Record<string, unknown>) => ({
+    id,
+    traceId: '1234567890abcdef1234567890abcdef',
+    name: "tool: 'get_weather'",
+    type: 'tool_call',
+    startTime: new Date(1000),
+    endTime: new Date(1500),
+    isRootSpan: false,
+    isEvent: false,
+    ...extra,
+  });
+  for (const source of [
+    tool('1234567890abcdef', {}),
+    tool('abcdef1234567890', { entityName: 'weather' }),
+  ])
+    await bridge.exportTracingEvent({
+      type: 'span_ended',
+      exportedSpan: source,
+    });
+  await bridge.flush();
+  expect(
+    sink.getFinishedSpans().map((span) => span.attributes['gen_ai.tool.name']),
+  ).toEqual(['get_weather', 'weather']);
+});
 it('applies Mastra privacy and preserves failure status without exception text', async () => {
   const { sink, observability, instance } = mastra({ captureContent: false });
   const span = instance.startSpan({
