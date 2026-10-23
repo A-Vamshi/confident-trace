@@ -628,6 +628,10 @@ async def test_retriever_executor_fallback(tracing):
     parents = {s.context.span_id for s in named(exporter, "Retriever")}
     assert len(parents) == 2
     assert all(s.parent.span_id in parents for s in named(exporter, "retriever-body"))
+    assert all(
+        s.attributes["confident.span.type"] == "retriever"
+        for s in named(exporter, "Retriever")
+    )
     assert not bridge.runs
 
 

@@ -1,8 +1,12 @@
 import { CallbackRuns } from '@/integrations/callback-runs';
 import type { CallbackOptions } from '@/integrations/callback-runs';
 import type { IntegrationSpanType } from '@/integrations/span-type';
-import { frameworkMessages, safely } from '@/integrations/framework';
-import { get, list } from '@/integrations/extract';
+import {
+  frameworkMessages,
+  safely,
+  toolArguments,
+} from '@/integrations/framework';
+import { get, list, parts } from '@/integrations/extract';
 import { state } from '@/runtime/state';
 import * as S from '@/semconv/generated';
 
@@ -120,7 +124,8 @@ export class ConfidentOpenAIAgentsProcessor {
   }
   async onSpanEnd(source: AgentsSpan): Promise<void> {
     const id = `${source.traceId}/${source.spanId}`;
-    if (!this.runs.active.has(id)) return;
+    const run = this.runs.active.get(id);
+    if (!run) return;
     safely(() => {
       const data = source.spanData;
       const type = get(data, 'type');
@@ -157,6 +162,9 @@ export class ConfidentOpenAIAgentsProcessor {
           messages(get(data, 'input') ?? get(data, '_input'), 'user'),
           true,
         );
+        const instructions = get(response, 'instructions');
+        if (instructions != null)
+          this.runs.instructions(id, parts(instructions));
         this.runs.content(
           id,
           'output',
@@ -164,7 +172,12 @@ export class ConfidentOpenAIAgentsProcessor {
           true,
         );
       } else if (type === 'function') {
-        this.runs.content(id, 'input', get(data, 'input'));
+        // The SDK passes a tool's arguments as JSON text.
+        this.runs.content(
+          id,
+          'input',
+          toolArguments(get(data, 'input'), run.policy),
+        );
         this.runs.content(id, 'output', get(data, 'output'));
       } else if (type === 'custom')
         this.runs.content(id, 'output', get(data, 'data'));

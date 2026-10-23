@@ -218,6 +218,41 @@ it('normalizes Responses text/tool calls and drops audio, metadata and error tex
     JSON.stringify(spans().map((s) => [s.attributes, s.events, s.status])),
   ).not.toContain('secret');
 });
+it("records a response's instructions and a tool's arguments as JSON", async () => {
+  await withTrace('test', async () => {
+    await withResponseSpan(async (span) => {
+      span.spanData._input = [{ role: 'user', content: 'Hi' }];
+      span.spanData._response = {
+        id: 'response-1',
+        model: 'test-model',
+        instructions: 'Be brief',
+        output: [],
+      };
+    });
+    await withFunctionSpan(
+      async (span) => {
+        span.spanData.output = 'sunny';
+      },
+      { data: { name: 'lookup', input: '{"city":"Paris"}' } },
+    );
+    await withFunctionSpan(async () => {}, {
+      data: { name: 'echo', input: '42' },
+    });
+  });
+  const attributes = (name: string) =>
+    spans().find((s) => s.name === name)!.attributes;
+  expect(
+    JSON.parse(String(attributes('response')['gen_ai.system_instructions'])),
+  ).toEqual([{ type: 'text', content: 'Be brief' }]);
+  expect(
+    JSON.parse(String(attributes('lookup')['confident.span.input'])),
+  ).toEqual({ city: 'Paris' });
+  // Arguments that aren't a JSON object stay as the text they were.
+  expect(JSON.parse(String(attributes('echo')['confident.span.input']))).toBe(
+    '42',
+  );
+});
+
 it('honors opt-out, redaction, payload bounds and disabled tracing', async () => {
   state.policy = new ContentPolicy({ captureContent: false });
   await withTrace('test', async () =>

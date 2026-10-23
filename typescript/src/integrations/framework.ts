@@ -65,6 +65,14 @@ export function parseContent(value: unknown, policy: ContentPolicy): unknown {
   }
 }
 
+/** Tool arguments a framework passes as JSON text, as the object they encode. */
+export function toolArguments(value: unknown, policy: ContentPolicy): unknown {
+  const parsed = parseContent(value, policy);
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed
+    : value;
+}
+
 /** Keep the selected 1.37 message subset when an upstream tracer advances. */
 export function semanticMessages(value: unknown): unknown {
   if (typeof value === 'string') return value;

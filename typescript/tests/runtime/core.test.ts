@@ -57,6 +57,33 @@ it('exports standard spans, preserves async parentage and merges resources', asy
     false,
   );
 });
+it('runs extra span processors and shuts them down with the runtime', async () => {
+  const started: string[] = [];
+  const ended: string[] = [];
+  let closed = false;
+  const { init, shutdown } = await import('@/runtime/init');
+  const runtime = init({
+    exporter: new InMemorySpanExporter(),
+    spanProcessors: [
+      {
+        onStart: (span) => started.push(span.name),
+        onEnd: (span) => ended.push(span.name),
+        forceFlush: async () => {},
+        shutdown: async () => {
+          closed = true;
+        },
+      },
+    ],
+  });
+  runtime.getTracer().startSpan('work').end();
+  trace.getTracer('third-party').startSpan('plain').end();
+  expect([started, ended]).toEqual([
+    ['work', 'plain'],
+    ['work', 'plain'],
+  ]);
+  expect(await shutdown()).toBe(true);
+  expect(closed).toBe(true);
+});
 it('preserves isolation between concurrent asynchronous roots', async () => {
   const exporter = new InMemorySpanExporter();
   const { init } = await import('@/runtime/init');

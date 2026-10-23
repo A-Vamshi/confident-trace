@@ -2,7 +2,11 @@ import { types } from 'node:util';
 import { frameworkOutputs, state } from '@/runtime/state';
 import { CallbackRuns } from '@/integrations/callback-runs';
 import type { CallbackOptions } from '@/integrations/callback-runs';
-import { frameworkMessages, safely } from '@/integrations/framework';
+import {
+  frameworkMessages,
+  safely,
+  toolArguments,
+} from '@/integrations/framework';
 import { get, list } from '@/integrations/extract';
 import * as S from '@/semconv/generated';
 
@@ -186,7 +190,10 @@ export class ConfidentLangChainCallbackHandler {
         nameOf(tool, runName, 'tool'),
         'tool',
       );
-      this.runs.content(runId, 'input', input);
+      // LangChain passes a structured tool's arguments as JSON text.
+      const run = this.runs.active.get(runId);
+      if (run)
+        this.runs.content(runId, 'input', toolArguments(input, run.policy));
     });
   };
   handleToolEnd = (output: unknown, runId: string): void => {

@@ -108,22 +108,36 @@ export class CallbackRuns {
       : direction === 'input'
         ? S.ATTR_CONFIDENT_SPAN_INPUT
         : S.ATTR_CONFIDENT_SPAN_OUTPUT;
-    const encoded = run.policy.encode(
-      value,
-      messageShape(key),
-      spanBudget(run.span, run.policy, messageShape(key)),
-    );
-    if (encoded === undefined) return;
-    run.span.setAttribute(key, encoded);
-    if (run.root)
+    const encoded = this.record(run, key, value);
+    if (encoded !== undefined && run.root)
       run.span.setAttribute(
         direction === 'input'
           ? S.ATTR_CONFIDENT_TRACE_INPUT
           : S.ATTR_CONFIDENT_TRACE_OUTPUT,
         encoded,
       );
+  }
+  /** A model's system instructions, when given apart from its input messages. */
+  instructions(id: string, value: unknown): void {
+    const run = this.active.get(id);
+    if (run && value !== undefined)
+      this.record(run, S.ATTR_GEN_AI_SYSTEM_INSTRUCTIONS, value);
+  }
+  private record(
+    run: CallbackRun,
+    key: string,
+    value: unknown,
+  ): string | undefined {
+    const encoded = run.policy.encode(
+      value,
+      messageShape(key),
+      spanBudget(run.span, run.policy, messageShape(key)),
+    );
+    if (encoded === undefined) return undefined;
+    run.span.setAttribute(key, encoded);
     if (encoded.includes('[truncated]'))
       run.span.setAttribute(S.ATTR_CONFIDENT_SPAN_CONTENT_TRUNCATED, true);
+    return encoded;
   }
   attribute(id: string, key: string, value: unknown): void {
     if (

@@ -127,7 +127,7 @@ export function init(options: InitOptions = {}): TraceRuntime {
     const resource = defaultResource()
       .merge(detectResources({ detectors: [envDetector] }))
       .merge(resourceFromAttributes(options.resourceAttributes ?? {}));
-    const registered: EndingProcessor[] = [];
+    const registered: EndingProcessor[] = [...(options.spanProcessors ?? [])];
     provider = new NodeTracerProvider({
       resource,
       spanProcessors: [processor, fanout(registered)],

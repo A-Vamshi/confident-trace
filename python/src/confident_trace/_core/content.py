@@ -113,8 +113,10 @@ class ContentPolicy:
                     return item
                 if type(item) is float:
                     return item if math.isfinite(item) else None
-                if type(item) is str:
-                    return item[: self.max_bytes]
+                if isinstance(item, str):
+                    # Subclasses (string enums, LangChain's TextAccessor) are
+                    # text too; take the plain value, not an overridden __str__.
+                    return str.__str__(item)[: self.max_bytes]
                 if type(item) is Media:
                     if not markers:
                         return budget.part(item)
@@ -125,9 +127,9 @@ class ContentPolicy:
                     ]
                 if type(item) is dict:
                     return {
-                        k[:256]: clean(v, depth + 1)
+                        str.__str__(k)[:256]: clean(v, depth + 1)
                         for k, v in islice(item.items(), max(0, remaining[0]))
-                        if type(k) is str
+                        if isinstance(k, str)
                     }
                 return "[unsupported]"
 

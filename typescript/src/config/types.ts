@@ -1,6 +1,9 @@
 import type { InstrumentationName } from '@/auto/types';
 import type { Attributes } from '@opentelemetry/api';
-import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
+import type {
+  SpanExporter,
+  SpanProcessor,
+} from '@opentelemetry/sdk-trace-base';
 import type { ContentOptions } from '@/content/types';
 
 export interface ExportOptions {
@@ -31,6 +34,11 @@ export interface InitOptions extends ExportOptions, ContentOptions {
   /** Automatic integrations enabled by the preload. [] selects manual-only tracing. */
   instrumentations?: 'all' | readonly InstrumentationName[];
   resourceAttributes?: Attributes;
+  /**
+   * More processors for the package-owned provider, run after its exporting
+   * processor and shut down with the runtime.
+   */
+  spanProcessors?: readonly SpanProcessor[];
 }
 
 export interface ResolvedExportOptions {

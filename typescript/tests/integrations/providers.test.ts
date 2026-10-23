@@ -198,6 +198,34 @@ it.each(['chat', 'responses', 'anthropic', 'google'] as const)(
     expect(requests).toBe(1);
   },
 );
+
+it('keeps the tool calls and results in a Responses input', async () => {
+  body = response;
+  await openai().responses.create({
+    model: 'test-model',
+    input: [
+      {
+        type: 'function_call',
+        call_id: 'call1',
+        name: 'lookup',
+        arguments: '{}',
+      },
+      { type: 'function_call_output', call_id: 'call1', output: 'sunny' },
+    ],
+  });
+  expect(JSON.parse(String(attrs()['gen_ai.input.messages']))).toEqual([
+    {
+      role: 'assistant',
+      parts: [
+        { type: 'tool_call', name: 'lookup', id: 'call1', arguments: '{}' },
+      ],
+    },
+    {
+      role: 'tool',
+      parts: [{ type: 'tool_call_response', id: 'call1', response: 'sunny' }],
+    },
+  ]);
+});
 it('preserves APIPromise helpers and raw response bodies', async () => {
   body = chat;
   const client = openai();

@@ -118,6 +118,14 @@ def test_content_policy():
             raise AssertionError("must not execute")
 
     assert json.loads(ContentPolicy().encode(Hostile())) == "[unsupported]"
+
+    class Text(str):
+        def __str__(self):
+            raise AssertionError("must not execute")
+
+    assert json.loads(ContentPolicy().encode({Text("key"): Text("value")})) == {
+        "key": "value"
+    }
     cyclic = []
     cyclic.append(cyclic)
     assert len(ContentPolicy(max_bytes=128).encode(cyclic)) <= 128
