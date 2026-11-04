@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — Integration fixes
+
+- Serve an instrumented AgentCore app through uvicorn (Python): the
+  `BedrockAgentCoreApp.__call__` wrapper was a coroutine function, so uvicorn's
+  app factory check got a coroutine instead of a `TypeError`, served that
+  coroutine as the app, and failed every request with HTTP 500.
+- Flush pending spans when Node's event loop empties (TypeScript), as Python
+  does at interpreter exit: a script that ended without `shutdown()` dropped the
+  spans still waiting in the batch.
+- Record the output and token usage of OpenAI and Anthropic calls made through
+  `with_raw_response` (Python), from the response body the SDK has already read.
+  CrewAI calls OpenAI this way, so its model spans had no output.
+- Record a LlamaIndex `ChatMessage` as its text (Python): agent inputs and
+  outputs, and the workflow events that carry messages, recorded
+  `"[unsupported]"`.
+- Don't export the Anthropic SDK's own span for a call this package already
+  records (Python and TypeScript). The Python SDK 2.x and TypeScript SDK 1.x
+  trace every call by default, so each call was exported twice and its tokens
+  counted twice. A call this package doesn't record still exports the SDK's span.
+
 ## Unreleased — Voice simulation test cases
 
 - Link a Pipecat call's trace to the test case named by
