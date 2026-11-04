@@ -54,7 +54,20 @@ def instrument(runtime):
         return []
 
     def factory(original, method):
-        async def call(wrapped, instance, args, kwargs):
+        signature = inspect.signature(original)
+
+        def call(wrapped, instance, args, kwargs):
+            # Stay synchronous: a call that doesn't fit the ASGI signature must
+            # fail right away, as the original does. uvicorn calls the app with
+            # no arguments to detect app factories; returning a coroutine there
+            # makes it serve that coroutine as the app.
+            try:
+                signature.bind(instance, *args, **kwargs)
+            except TypeError:
+                return wrapped(*args, **kwargs)
+            return traced(wrapped, instance, args, kwargs)
+
+        async def traced(wrapped, instance, args, kwargs):
             scope = args[0] if args else kwargs.get("scope", {})
             current = trace.get_current_span()
             if (

@@ -116,6 +116,82 @@ def test_openai_stream(telemetry):
     assert "hello" in captured[0].attributes["gen_ai.output.messages"]
 
 
+@pytest.mark.asyncio
+async def test_openai_raw_response(telemetry):
+    # with_raw_response returns the HTTP response, which the caller parses.
+    from openai import AsyncOpenAI, OpenAI
+
+    exporter = enable(telemetry, "openai")
+    body = {
+        "id": "chat-1",
+        "object": "chat.completion",
+        "model": "gpt-test",
+        "created": 0,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "hello"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3},
+    }
+    request = {"model": "gpt-test", "messages": [{"role": "user", "content": "hi"}]}
+    with OpenAI(
+        api_key="test",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=body))
+        ),
+    ) as client:
+        raw = client.chat.completions.with_raw_response.create(**request)
+        assert raw.parse().choices[0].message.content == "hello"
+    async with AsyncOpenAI(
+        api_key="test",
+        http_client=httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=body))
+        ),
+    ) as client:
+        raw = await client.chat.completions.with_raw_response.create(**request)
+        assert raw.parse().choices[0].message.content == "hello"
+    captured = spans(exporter)
+    assert len(captured) == 2
+    for span in captured:
+        assert span.attributes["gen_ai.usage.output_tokens"] == 1
+        output = json.loads(span.attributes["gen_ai.output.messages"])
+        assert output[0]["parts"][0]["content"] == "hello"
+
+
+def test_openai_raw_stream_is_left_to_the_caller(telemetry):
+    from openai import OpenAI
+
+    exporter = enable(telemetry, "openai")
+    chunk = {
+        "id": "c1",
+        "object": "chat.completion.chunk",
+        "created": 0,
+        "model": "gpt-test",
+        "choices": [{"index": 0, "delta": {"content": "hello"}, "finish_reason": None}],
+    }
+    wire = "data: " + json.dumps(chunk) + "\n\ndata: [DONE]\n\n"
+    with OpenAI(
+        api_key="test",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(
+                    200, text=wire, headers={"content-type": "text/event-stream"}
+                )
+            )
+        ),
+    ) as client:
+        raw = client.chat.completions.with_raw_response.create(
+            model="gpt-test", messages=[], stream=True
+        )
+        assert [c.choices[0].delta.content for c in raw.parse()] == ["hello"]
+    captured = spans(exporter)
+    assert len(captured) == 1
+    assert "gen_ai.output.messages" not in captured[0].attributes
+
+
 def test_provider_exception_is_not_retried(telemetry):
     from openai import BadRequestError, OpenAI
 

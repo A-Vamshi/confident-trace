@@ -2,6 +2,7 @@
 
 import asyncio
 import contextvars
+import json
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -94,6 +95,10 @@ if mode in ("hierarchy", "ownership", "content", "disabled"):
         agents = operation(result, "invoke_agent")
         assert len(agents) == 1
         assert agents[0].parent.span_id == root.context.span_id
+        if mode != "content":
+            # The agent's reply is a ChatMessage; it records as its text.
+            output = json.loads(agents[0].attributes["confident.span.output"])
+            assert output == {"response": "done"}
         tools = operation(result, "execute_tool")
         assert len(tools) == 1
         assert [s.name for s in children(result, tools[0])] == ["inside-tool"]

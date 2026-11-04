@@ -6,12 +6,14 @@ from opentelemetry.trace import SpanKind
 from ... import _attributes as confident
 from ..._core import runtime as _runtime
 from ..._core.safety import safe
+from ..._core.scopes import PROVIDER_CALL
 from ..._core.spans import Operation
 from ..._semconv import genai_v1_37_0 as ai
 from ..._semconv import native as native_ai
+from .extraction import get
 from .streams import AsyncStream, Stream
 
-_SUPPRESS = context.create_key(confident.PROVIDER_CALL_CONTEXT_KEY)
+_SUPPRESS = PROVIDER_CALL
 _NATIVE_INFERENCE_SCOPES = {}
 
 
@@ -123,11 +125,25 @@ def finish_call(
             return async_stream_class(value, operation=op, consume=accumulator())
         if hasattr(value, "__next__"):
             return stream_class(value, operation=op, consume=accumulator())
-        safe(response, op, value)
+        safe(response, op, _parsed(value))
     except Exception:
         pass
     op.end()
     return value
+
+
+def _parsed(value):
+    # `with_raw_response` in Stainless-generated SDKs (OpenAI, Anthropic) returns
+    # the HTTP response instead of the model. Record from its JSON body when the
+    # SDK has already read it; a streamed body is left for the caller to read.
+    http = get(value, "http_response")
+    if (
+        http is None
+        or not getattr(http, "is_stream_consumed", False)
+        or "json" not in http.headers.get("content-type", "")
+    ):
+        return value
+    return http.json()
 
 
 def wrapper(

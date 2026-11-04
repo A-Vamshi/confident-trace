@@ -44,10 +44,13 @@ export const state: {
   };
   /** Native framework scopes whose spans receive an integration label. */
   integrationScopes: Map<string, string>;
+  /** Scopes of SDKs that trace their own API calls; see RoutingProcessor. */
+  sdkCallScopes: Set<string>;
   controlFlow: Set<(error: unknown) => boolean>;
   auto: AutomaticState;
 } = {
   integrationScopes: new Map(),
+  sdkCallScopes: new Set(),
   controlFlow: new Set(),
   auto: {
     registered: false,

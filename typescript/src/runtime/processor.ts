@@ -18,7 +18,7 @@ import type { ExportOptions } from '@/config/types';
 import { createHttpExporter } from '@/exporters/http';
 import { createGrpcExporter } from '@/exporters/grpc';
 import { ATTR_CONFIDENT_SPAN_INTEGRATION } from '@/semconv/generated';
-import { state } from '@/runtime/state';
+import { state, suppress } from '@/runtime/state';
 
 import { context, ROOT_CONTEXT, trace } from '@opentelemetry/api';
 import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
@@ -61,6 +61,18 @@ function isAiSpan(span: ReadableSpan): boolean {
     Object.keys(span.attributes).some(prefixed) ||
     span.events.some((event) => event.name.startsWith('gen_ai.'))
   );
+}
+
+/**
+ * An SDK's own span for a provider call this package already records. Outside
+ * a recorded call it is the only record of that call, so it still exports.
+ */
+function duplicatesProviderCall(span: Span, parent: Context): boolean {
+  if (!state.sdkCallScopes.size || !parent.getValue(suppress)) return false;
+  const name = span.instrumentationScope?.name ?? '';
+  for (const scope of state.sdkCallScopes)
+    if (name === scope || name.startsWith(`${scope}.`)) return true;
+  return false;
 }
 
 class RoutingProcessor implements SpanProcessor, ProjectRouter {
@@ -144,7 +156,12 @@ class RoutingProcessor implements SpanProcessor, ProjectRouter {
     if (integration && !isDisabled())
       span.setAttribute(ATTR_CONFIDENT_SPAN_INTEGRATION, integration);
     ambientOnStart(span, parent);
-    if (this.closed || tracingSuppressed(parent)) return;
+    if (
+      this.closed ||
+      tracingSuppressed(parent) ||
+      duplicatesProviderCall(span, parent)
+    )
+      return;
     let route =
       (parent.getValue(projectKey) as Route | undefined) ?? this.fallback;
     if (route.closed) {

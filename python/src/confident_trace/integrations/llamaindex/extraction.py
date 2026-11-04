@@ -1,6 +1,7 @@
 """Only documented data payloads; omit configuration, state and native LLM spans."""
 
 from llama_index.core.base.llms.base import BaseLLM
+from llama_index.core.base.llms.types import ChatMessage
 from llama_index.core.schema import BaseNode, NodeWithScore, QueryBundle
 from llama_index.core.tools.types import BaseTool, ToolOutput
 from workflows.events import Event, StopEvent
@@ -39,6 +40,8 @@ def data(value, depth=0):
         return "[truncated]"
     if isinstance(value, QueryBundle):
         return value.query_str
+    if isinstance(value, ChatMessage):
+        return value.content  # Its text, as a plain-string message records.
     if isinstance(value, NodeWithScore):
         return {"text": data(value.node, depth + 1), "score": value.score}
     if isinstance(value, BaseNode):

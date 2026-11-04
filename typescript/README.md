@@ -326,6 +326,11 @@ asynchronous cleanup continues. Repeated shutdown awaits the same cleanup operat
 A JavaScript timeout cannot interrupt synchronous code that blocks the event loop.
 Finish active work before shutdown.
 
+A process that ends without calling `shutdown()` still delivers its pending spans:
+they are flushed once, with a 5000 ms budget, when Node's event loop empties
+(`beforeExit`). That event does not fire on `process.exit()`, signals or uncaught
+exceptions, so call `shutdown()` before those.
+
 ## Content and conventions
 
 The content policy defaults to enabled with a 16 KiB attribute cap. It

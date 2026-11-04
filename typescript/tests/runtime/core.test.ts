@@ -193,3 +193,47 @@ it('shutdown closes the gate immediately, is idempotent, and cleanup can finish 
   expect(await runtime.shutdown()).toBe(true);
   expect(close).toHaveBeenCalledOnce();
 });
+it('flushes pending spans when the event loop empties, until shutdown', async () => {
+  const exporter = new InMemorySpanExporter();
+  const before = process.listeners('beforeExit');
+  const { init } = await import('@/runtime/init');
+  const runtime = init({ exporter });
+  const added = process
+    .listeners('beforeExit')
+    .filter((listener) => !before.includes(listener));
+  expect(added).toHaveLength(1);
+  runtime.getTracer().startSpan('pending').end();
+  expect(exporter.getFinishedSpans()).toHaveLength(0);
+  added[0]!(0);
+  await vi.waitFor(() => expect(exporter.getFinishedSpans()).toHaveLength(1));
+  expect(await runtime.shutdown()).toBe(true);
+  expect(process.listeners('beforeExit')).toEqual(before);
+});
+it("doesn't export an SDK's own span for a provider call it records", async () => {
+  const exporter = new InMemorySpanExporter();
+  const { init, flush } = await import('@/runtime/init');
+  const { instrument } = await import('@/integrations/instrument');
+  init({ exporter, instrumentations: [] });
+  // Anthropic SDK 1.x traces each API call itself, which repeats our span.
+  const sdkSpan = (scope: string) =>
+    trace
+      .getTracer(scope)
+      .startSpan('anthropic.messages.create', {
+        attributes: { 'gen_ai.operation.name': 'chat' },
+      })
+      .end();
+  const messages = {
+    create: async () => {
+      sdkSpan('com.anthropic.sdk.typescript');
+      sdkSpan('com.anthropic.sdk.typescript.bedrock');
+      return { id: 'msg-1', type: 'message', content: [] };
+    },
+  };
+  instrument([[messages, 'create']], 'anthropic');
+  await messages.create();
+  sdkSpan('com.anthropic.sdk.typescript'); // A call we don't record still exports.
+  expect(await flush()).toBe(true);
+  expect(
+    exporter.getFinishedSpans().map((s) => s.instrumentationScope.name),
+  ).toEqual(['confident-trace', 'com.anthropic.sdk.typescript']);
+});

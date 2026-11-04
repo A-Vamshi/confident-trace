@@ -161,12 +161,14 @@ def test_registry_cleanup_is_idempotent_and_preserves_later_wrappers(telemetry):
 TELEMETRY_DEFINITIONS = {
     "_attributes.py",
     "_semconv/native.py",
+    "integrations/anthropic/_constants.py",
     "integrations/google_adk/_constants.py",
     "integrations/google_genai/_constants.py",
     "integrations/microsoft_agent_framework/_constants.py",
     "integrations/pydantic_ai/_constants.py",
     "integrations/strands/_constants.py",
     "integrations/livekit/_constants.py",
+    "integrations/pipecat/_constants.py",
     "integrations/openai_agents/_constants.py",
     "integrations/claude_agent_sdk/_constants.py",
 }

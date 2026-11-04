@@ -53,11 +53,18 @@ let runtime: TraceRuntime | undefined;
 class OwnedRuntime implements TraceRuntime {
   private running = true;
   private closing: Promise<void> | undefined;
+  // The batch processor's timer doesn't keep Node alive, so a script that ends
+  // without shutdown() would drop its pending spans. Flush them when the event
+  // loop empties; the flush keeps Node alive until it finishes. Only once: the
+  // flush schedules work, so a lasting listener would fire after every flush.
+  private readonly flushBeforeExit = () => void this.flush(5000);
   constructor(
     private readonly provider: NodeTracerProvider,
     readonly policy: ContentPolicy,
     private readonly contextManager?: AsyncLocalStorageContextManager,
-  ) {}
+  ) {
+    process.once('beforeExit', this.flushBeforeExit);
+  }
   get active(): boolean {
     return this.running;
   }
@@ -78,6 +85,7 @@ class OwnedRuntime implements TraceRuntime {
   shutdown(timeoutMillis = 5000): Promise<boolean> {
     if (!this.closing) {
       this.running = false;
+      process.off('beforeExit', this.flushBeforeExit);
       this.closing = Promise.resolve()
         .then(() => closeOwned())
         .finally(() => this.provider.shutdown())

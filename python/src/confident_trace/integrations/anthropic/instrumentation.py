@@ -3,9 +3,11 @@
 import inspect
 
 from ..._attributes import Integration
+from ..._core.scopes import register_sdk_call_scope
 from ..._semconv import genai_v1_37_0 as ai
 from .._shared.lifecycle import begin_call, finish_call, wrapper
 from .._shared.patching import install_targets
+from ._constants import SCOPE_NAME
 from .extraction import connection, request, response
 from .streaming import Accumulator, AsyncStream, Manager, Stream
 
@@ -42,4 +44,4 @@ def instrument(runtime):
             asynchronous=inspect.iscoroutinefunction(inspect.unwrap(original)),
             manager=Manager if method == "stream" else None,
         ),
-    )
+    ) + register_sdk_call_scope(SCOPE_NAME)

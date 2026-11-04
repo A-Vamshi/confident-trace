@@ -22,6 +22,10 @@ export interface InstrumentationOptions extends ContentOptions {
   tracer?: Tracer;
 }
 type Method = (...args: unknown[]) => unknown;
+// SDKs that trace each API call themselves, without message content.
+const SDK_CALL_SCOPES: Partial<Record<Provider, string>> = {
+  anthropic: 'com.anthropic.sdk.typescript',
+};
 function safe(fn: () => void) {
   try {
     fn();
@@ -47,6 +51,8 @@ export function instrument(
   )
     ? new ContentPolicy(options)
     : undefined;
+  const sdkScope = SDK_CALL_SCOPES[provider];
+  if (sdkScope) state.sdkCallScopes.add(sdkScope);
   const undo: (() => void)[] = [];
   try {
     for (const [target, key] of targets) {

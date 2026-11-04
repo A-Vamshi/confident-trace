@@ -25,6 +25,10 @@ _DEFER_TRACE_CONTEXT = context.create_key(confident.DEFER_TRACE_CONTEXT_KEY)
 
 _ROUTE = context.create_key(confident.PROJECT_CONTEXT_KEY)
 _SUPPRESS = context.create_key(confident.SUPPRESS_CONTEXT_KEY)
+# Set while a provider call this package records is running.
+PROVIDER_CALL = context.create_key(confident.PROVIDER_CALL_CONTEXT_KEY)
+# SDKs that trace their own API calls, by instrumentation scope.
+_SDK_CALL_SCOPES = {}
 
 
 def suppressed(ctx=None):
@@ -32,6 +36,32 @@ def suppressed(ctx=None):
         context.get_value(_SUPPRESS, ctx)
         or context.get_value(_SUPPRESS_INSTRUMENTATION_KEY, ctx)
     )
+
+
+def register_sdk_call_scope(name):
+    """Don't export an SDK's own span for a provider call that is already recorded.
+
+    Covers `name` and its `name.<platform>` variants. Outside a recorded call the
+    SDK's span is the only record of that call, so it still exports.
+    """
+    if name in _SDK_CALL_SCOPES:
+        return []
+    owner = object()
+    _SDK_CALL_SCOPES[name] = owner
+
+    def remove():
+        if _SDK_CALL_SCOPES.get(name) is owner:
+            del _SDK_CALL_SCOPES[name]
+
+    return [remove]
+
+
+def _duplicates_provider_call(span, ctx=None):
+    if not _SDK_CALL_SCOPES or not context.get_value(PROVIDER_CALL, ctx):
+        return False
+    scope = span.instrumentation_scope
+    name = scope.name if scope else ""
+    return any(name == s or name.startswith(s + ".") for s in _SDK_CALL_SCOPES)
 
 
 def detached_context():
@@ -208,6 +238,7 @@ class RoutingProcessor:
             route = (
                 None
                 if suppressed(parent_context)
+                or _duplicates_provider_call(span, parent_context)
                 else (context.get_value(_ROUTE, parent_context) or self.default)
             )
             if route and route.closed:

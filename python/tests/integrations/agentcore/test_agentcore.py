@@ -1,4 +1,7 @@
 import asyncio
+import socket
+import threading
+import time
 
 import httpx
 import pytest
@@ -6,6 +9,7 @@ from conftest import spans
 
 pytest.importorskip("bedrock_agentcore")
 pytest.importorskip("opentelemetry.instrumentation.asgi")
+import uvicorn
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
 from bedrock_agentcore.runtime.models import SESSION_HEADER
@@ -103,6 +107,46 @@ async def test_request_context_and_stream(native, preinstrumented, stream):
     )
     assert tuple(captured) == native[2].get_finished_spans()
     assert not trace.get_current_span().get_span_context().is_valid
+
+
+def test_served_by_uvicorn(native):
+    # uvicorn calls the app with no arguments to detect app factories, which
+    # in-process transports never do. That call must still fail.
+    app = BedrockAgentCoreApp()
+
+    @app.entrypoint
+    def invoke(payload):
+        return {"ok": True}
+
+    with pytest.raises(TypeError):
+        app()
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+    thread = threading.Thread(
+        target=server.run, kwargs={"sockets": [sock]}, daemon=True
+    )
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10
+        while not server.started:
+            assert thread.is_alive() and time.monotonic() < deadline
+            time.sleep(0.01)
+        response = httpx.post(
+            f"http://127.0.0.1:{port}/invocations",
+            json={},
+            headers={SESSION_HEADER: "served-session"},
+        )
+    finally:
+        server.should_exit = True
+        thread.join(10)
+        sock.close()
+    assert response.status_code == 200, response.text
+    assert response.json() == {"ok": True}
+    server_spans = [s for s in spans(native[1]) if s.kind == SpanKind.SERVER]
+    assert len(server_spans) == 1
+    assert server_spans[0].attributes["confident.trace.thread_id"] == "served-session"
 
 
 @pytest.mark.asyncio
